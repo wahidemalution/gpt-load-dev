@@ -12,6 +12,7 @@ import AppMessageHost from './components/ui/AppMessageHost.vue'
 import { usePageTitle } from './app/use-page-title'
 import AuthGate from './features/auth/AuthGate.vue'
 import AppLayout from './layouts/AppLayout.vue'
+import LandingLayout from './layouts/LandingLayout.vue'
 import PublicLayout from './layouts/PublicLayout.vue'
 
 const { locale } = useI18n()
@@ -29,7 +30,7 @@ const { title } = usePageTitle()
 watch(
   [title, locale],
   () => {
-    document.title = `${title.value} · GPT-Load`
+    document.title = `${title.value} · Tokenizer`
   },
   { immediate: true },
 )
@@ -42,6 +43,9 @@ watch(
       <AuthGate v-if="currentRoute.meta.requiresAuth">
         <AppLayout><component :is="Component" /></AppLayout>
       </AuthGate>
+      <LandingLayout v-else-if="currentRoute.name === 'modern-landing'">
+        <component :is="Component" />
+      </LandingLayout>
       <PublicLayout v-else><component :is="Component" /></PublicLayout>
     </RouterView>
   </TooltipProvider>
