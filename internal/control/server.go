@@ -34,16 +34,17 @@ type ReleaseUpdateChecker interface {
 }
 
 type Server struct {
-	authDigest        [sha256.Size]byte
-	service           *Service
-	systemInfo        systemInfoResponse
-	authFailures      *authFailureLimiter
-	compareDigest     func([]byte, []byte) int
-	logger            *logrus.Logger
-	authFailureEvents *utils.RateLimitedEventCounter
-	startedAt         time.Time
-	now               func() time.Time
-	releaseChecker    ReleaseUpdateChecker
+	authDigest         [sha256.Size]byte
+	service            *Service
+	systemInfo         systemInfoResponse
+	authFailures       *authFailureLimiter
+	compareDigest      func([]byte, []byte) int
+	logger             *logrus.Logger
+	authFailureEvents  *utils.RateLimitedEventCounter
+	startedAt          time.Time
+	now                func() time.Time
+	releaseChecker     ReleaseUpdateChecker
+	landingPublicCache *landingPublicCache
 }
 
 const maxControlJSONBodyBytes int64 = 32 << 20
@@ -58,14 +59,15 @@ func NewServer(cfg *config.Config, service *Service) *Server {
 		service.oauthCallback.configureForServerHost(cfg.Server.Host)
 	}
 	return &Server{
-		authDigest:    sha256.Sum256([]byte(cfg.AuthKey)),
-		service:       service,
-		systemInfo:    newSystemInfoResponse(cfg),
-		authFailures:  newAuthFailureLimiter(),
-		compareDigest: subtle.ConstantTimeCompare,
-		logger:        logrus.StandardLogger(),
-		startedAt:     now().UTC(),
-		now:           now,
+		authDigest:         sha256.Sum256([]byte(cfg.AuthKey)),
+		service:            service,
+		systemInfo:         newSystemInfoResponse(cfg),
+		authFailures:       newAuthFailureLimiter(),
+		compareDigest:      subtle.ConstantTimeCompare,
+		logger:             logrus.StandardLogger(),
+		startedAt:          now().UTC(),
+		now:                now,
+		landingPublicCache: &landingPublicCache{},
 		authFailureEvents: utils.NewRateLimitedEventCounter(
 			time.Minute,
 			time.Now,

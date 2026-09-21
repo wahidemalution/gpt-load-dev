@@ -327,6 +327,7 @@ func newHTTPRegistry(
 ) (*httproute.Registry, error) {
 	return httproute.NewRegistry(
 		app.HTTPModule(),
+		controlServer.LandingPublicHTTPModule(),
 		controlServer.HTTPModule(),
 		gatewayHandler.HTTPModule(),
 		webUIServer.HTTPModule(),
