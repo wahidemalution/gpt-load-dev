@@ -191,6 +191,43 @@ func TestAdminHTTPCreateUser(t *testing.T) {
 	}
 }
 
+func TestAdminHTTPCreateUserInitialBalanceLedger(t *testing.T) {
+	env := newAdminTestEnv(t)
+	ctx := context.Background()
+
+	recorder := env.do(http.MethodPost, "/api/admin/users",
+		`{"email":"initial-balance@example.com","password":"password1","balance_nano_usd":5000}`)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("POST /users = %d %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	payload := decodeEnvelope(t, recorder)
+	var created struct {
+		Profile Profile `json:"profile"`
+	}
+	if err := json.Unmarshal(payload.Data, &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created.Profile.BalanceNanoUSD != 5000 {
+		t.Fatalf("created balance = %d, want 5000", created.Profile.BalanceNanoUSD)
+	}
+
+	var adjustments []models.UserBalanceAdjustment
+	if err := env.db.Where("user_id = ?", created.Profile.ID).Find(&adjustments).Error; err != nil {
+		t.Fatalf("load adjustments: %v", err)
+	}
+	if len(adjustments) != 1 ||
+		adjustments[0].DeltaNanoUSD != 5000 ||
+		adjustments[0].Reason != "topup" ||
+		adjustments[0].AdminNote != "initial" ||
+		adjustments[0].CreatedByAdmin != "admin" {
+		t.Fatalf("adjustments = %#v, want one initial topup of 5000", adjustments)
+	}
+
+	if err := ReconcileBalance(ctx, env.db, created.Profile.ID); err != nil {
+		t.Fatalf("ReconcileBalance() error = %v", err)
+	}
+}
+
 func TestAdminHTTPCreateUserGeneratedPassword(t *testing.T) {
 	env := newAdminTestEnv(t)
 

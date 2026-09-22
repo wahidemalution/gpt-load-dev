@@ -196,18 +196,35 @@ func (s *Service) CreateAdminUser(ctx context.Context, input AdminCreateInput) (
 	if input.MaxAPIKeys > 0 {
 		updates["max_api_keys"] = input.MaxAPIKeys
 	}
-	if input.BalanceNanoUSD != 0 {
-		updates["balance_nano_usd"] = input.BalanceNanoUSD
-	}
 	if len(updates) > 0 {
 		if err := s.db.WithContext(ctx).Model(&models.User{}).
 			Where("id = ?", profile.ID).Updates(updates).Error; err != nil {
 			return Profile{}, "", err
 		}
-		profile.BalanceNanoUSD = input.BalanceNanoUSD
 		if input.MaxAPIKeys > 0 {
 			profile.MaxAPIKeys = input.MaxAPIKeys
 		}
+	}
+	if input.BalanceNanoUSD != 0 {
+		// Initial balance must flow through the ledger so the invariant
+		// asserted by ReconcileBalance (balance == SUM(adjustments) -
+		// SUM(deducted)) holds from creation onward.
+		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			row := models.UserBalanceAdjustment{
+				UserID: profile.ID, DeltaNanoUSD: input.BalanceNanoUSD,
+				Reason: "topup", AdminNote: "initial", CreatedByAdmin: "admin",
+				CreatedAtMS: s.now().UnixMilli(),
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+			return tx.Model(&models.User{}).Where("id = ?", profile.ID).
+				Update("balance_nano_usd", input.BalanceNanoUSD).Error
+		})
+		if err != nil {
+			return Profile{}, "", err
+		}
+		profile.BalanceNanoUSD = input.BalanceNanoUSD
 	}
 	return profile, returnedPassword, nil
 }
