@@ -12,6 +12,7 @@ import (
 
 	"gpt-load/internal/platform/httproute"
 	"gpt-load/internal/platform/i18n"
+	"gpt-load/internal/testutil/encryptiontest"
 )
 
 type httpTestEnv struct {
@@ -33,6 +34,7 @@ func newHTTPTestEnv(t *testing.T) *httpTestEnv {
 		t:            t,
 		modelsResult: []map[string]any{{"name": "gpt-5"}},
 	}
+	env.service = env.service.WithEncryptor(encryptiontest.Service(t, "userdash-test-encryption-key"))
 	module := NewHTTPModule(env.service, nil, func(_ context.Context) (any, error) {
 		env.modelsCalls++
 		return env.modelsResult, nil

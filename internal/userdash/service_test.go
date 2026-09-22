@@ -19,6 +19,18 @@ func deterministicRandom() *bytes.Reader {
 	return bytes.NewReader(make([]byte, 32))
 }
 
+// deterministicKeyRandom yields distinct bytes per Read so sessions and
+// generated keys never collide under the unique key_hash index.
+type deterministicKeyRandom struct{ next byte }
+
+func (r *deterministicKeyRandom) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = r.next
+	}
+	r.next++
+	return len(p), nil
+}
+
 type testEnv struct {
 	db      *gorm.DB
 	now     time.Time
@@ -29,7 +41,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 	db := sqlitetest.OpenMigrated(t)
 	env := &testEnv{db: db, now: time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)}
-	env.service = NewService(db, deterministicRandom(), func() time.Time { return env.now })
+	env.service = NewService(db, &deterministicKeyRandom{next: 0x5a}, func() time.Time { return env.now })
 	return env
 }
 

@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"gpt-load/internal/platform/encryption"
 	"gpt-load/internal/storage/models"
 )
 
@@ -37,9 +38,10 @@ var (
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("gpt-load-dummy-password"), bcryptCost)
 
 type Service struct {
-	db     *gorm.DB
-	random io.Reader
-	now    func() time.Time
+	db        *gorm.DB
+	random    io.Reader
+	now       func() time.Time
+	encryptor encryption.Service
 }
 
 func NewService(db *gorm.DB, random io.Reader, now func() time.Time) *Service {
@@ -50,6 +52,14 @@ func NewService(db *gorm.DB, random io.Reader, now func() time.Time) *Service {
 		now = time.Now
 	}
 	return &Service{db: db, random: random, now: now}
+}
+
+// WithEncryptor returns the service with the credential encryptor used for
+// user-owned access keys. Nil-tolerant so tests can construct the service
+// without one (key routes then fail fast).
+func (s *Service) WithEncryptor(encryptor encryption.Service) *Service {
+	s.encryptor = encryptor
+	return s
 }
 
 type Profile struct {

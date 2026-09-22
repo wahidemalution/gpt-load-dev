@@ -327,8 +327,9 @@ func newHTTPRegistry(
 	controlServer *control.Server,
 	webUIServer *webui.Server,
 	db *gorm.DB,
+	encryptionService encryption.Service,
 ) (*httproute.Registry, error) {
-	userdashService := userdash.NewService(db, nil, nil)
+	userdashService := userdash.NewService(db, nil, nil).WithEncryptor(encryptionService)
 	userdashModule := userdash.NewHTTPModule(
 		userdashService,
 		logrus.StandardLogger(),

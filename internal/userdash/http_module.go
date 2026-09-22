@@ -156,39 +156,68 @@ func (m *HTTPModule) Module() httproute.Module {
 		Prefix:            "/api/clientarea",
 		NamespacePrefixes: []string{"/api/clientarea"},
 		BeforeAuth:        gin.HandlersChain{i18n.Middleware()},
-		Routes: []httproute.Route{
-			{
-				Name:     "clientarea.signup",
-				Methods:  []string{http.MethodPost},
-				Path:     "/signup",
-				Handlers: gin.HandlersChain{m.handleSignup},
-			},
-			{
-				Name:     "clientarea.login",
-				Methods:  []string{http.MethodPost},
-				Path:     "/login",
-				Handlers: gin.HandlersChain{m.handleLogin},
-			},
-			{
-				Name:     "clientarea.logout",
-				Methods:  []string{http.MethodPost},
-				Path:     "/logout",
-				Handlers: gin.HandlersChain{m.sessionAuth(), m.handleLogout},
-			},
-			{
-				Name:     "clientarea.me",
-				Methods:  []string{http.MethodGet},
-				Path:     "/me",
-				Handlers: gin.HandlersChain{m.sessionAuth(), m.handleMe},
-			},
-			{
-				Name:     "clientarea.models",
-				Methods:  []string{http.MethodGet},
-				Path:     "/models",
-				Handlers: gin.HandlersChain{m.sessionAuth(), m.handleModels},
-			},
+		Routes:            m.routes(),
+	}
+}
+
+func (m *HTTPModule) routes() []httproute.Route {
+	routes := []httproute.Route{
+		{
+			Name:     "clientarea.signup",
+			Methods:  []string{http.MethodPost},
+			Path:     "/signup",
+			Handlers: gin.HandlersChain{m.handleSignup},
+		},
+		{
+			Name:     "clientarea.login",
+			Methods:  []string{http.MethodPost},
+			Path:     "/login",
+			Handlers: gin.HandlersChain{m.handleLogin},
+		},
+		{
+			Name:     "clientarea.logout",
+			Methods:  []string{http.MethodPost},
+			Path:     "/logout",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleLogout},
+		},
+		{
+			Name:     "clientarea.me",
+			Methods:  []string{http.MethodGet},
+			Path:     "/me",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleMe},
+		},
+		{
+			Name:     "clientarea.models",
+			Methods:  []string{http.MethodGet},
+			Path:     "/models",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleModels},
+		},
+		{
+			Name:     "clientarea.keys.list",
+			Methods:  []string{http.MethodGet},
+			Path:     "/keys",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleListKeys},
+		},
+		{
+			Name:     "clientarea.keys.create",
+			Methods:  []string{http.MethodPost},
+			Path:     "/keys",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleCreateKey},
+		},
+		{
+			Name:     "clientarea.keys.delete",
+			Methods:  []string{http.MethodDelete},
+			Path:     "/keys/:id",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleDeleteKey},
+		},
+		{
+			Name:     "clientarea.usage",
+			Methods:  []string{http.MethodGet},
+			Path:     "/usage",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleUsage},
 		},
 	}
+	return routes
 }
 
 func mapServiceError(c *gin.Context, err error) {
