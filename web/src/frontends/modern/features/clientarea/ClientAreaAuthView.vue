@@ -1,34 +1,74 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
-import { AppButton, AppTextField } from '@modern/components/ui'
 import { login, signup } from '@modern/api/clientarea'
-import { useApiClient } from '@shared/http/client-context'
+import { AppButton, AppNotice, AppSegmentedControl, AppTextField } from '@modern/components/ui'
+import AuthCard from '@modern/features/auth/AuthCard.vue'
+import { ApiError, NetworkError } from '@shared/http/errors'
+
+import { useUserApiClient } from './client-area'
 import { useUserSession } from './user-session'
 
+type Mode = 'login' | 'signup'
+
 const { t } = useI18n()
-const client = useApiClient()
+const router = useRouter()
+const client = useUserApiClient()
 const session = useUserSession()
 
-const mode = ref<'login' | 'signup'>('login')
+const mode = ref<Mode>('login')
 const email = ref('')
 const password = ref('')
+const confirm = ref('')
 const busy = ref(false)
 const error = ref('')
+const confirmError = ref('')
+
+const tabs = computed(() => [
+  { value: 'login', label: t('clientarea.auth.login') },
+  { value: 'signup', label: t('clientarea.auth.signup') },
+])
+
+onMounted(() => {
+  if (session.hasSession()) void router.replace({ name: 'modern-clientarea-dashboard' })
+})
+
+function switchMode(value: string): void {
+  if (value !== 'login' && value !== 'signup') return
+  mode.value = value
+  error.value = ''
+  confirmError.value = ''
+}
+
+function messageFor(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    if (cause.status === 409) return t('clientarea.auth.errors.emailTaken')
+    if (cause.status === 401) return t('clientarea.auth.errors.wrongCredentials')
+    if (cause.status === 429) return t('clientarea.auth.errors.tooManyAttempts')
+  }
+  if (cause instanceof NetworkError) return t('clientarea.auth.errors.network')
+  return t('clientarea.auth.failed')
+}
 
 async function submit(): Promise<void> {
   if (busy.value) return
+  confirmError.value = ''
+  if (mode.value === 'signup' && password.value !== confirm.value) {
+    confirmError.value = t('clientarea.auth.passwordMismatch')
+    return
+  }
   busy.value = true
   error.value = ''
   try {
-    if (mode.value === 'signup') {
-      await signup(client, email.value, password.value)
-    }
-    const result = await login(client, email.value, password.value)
+    const address = email.value.trim()
+    if (mode.value === 'signup') await signup(client, address, password.value)
+    const result = await login(client, address, password.value)
     session.setSession(result.token, result.profile, result.expires_at_ms)
-  } catch {
-    error.value = t('clientarea.auth.failed')
+    await router.replace({ name: 'modern-clientarea-dashboard' })
+  } catch (cause) {
+    error.value = messageFor(cause)
   } finally {
     busy.value = false
   }
@@ -36,42 +76,80 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <!-- ponytail: placeholder — auth UI dibangun di task berikutnya -->
-  <section class="modern-clientarea-auth">
-    <h1>{{ t('clientarea.auth.title') }}</h1>
-    <p>{{ t('clientarea.auth.description') }}</p>
-    <form class="modern-clientarea-auth-form" @submit.prevent="submit">
-      <AppTextField v-model="email" :label="t('clientarea.auth.email')" type="email" required />
-      <AppTextField
-        v-model="password"
-        :label="t('clientarea.auth.password')"
-        type="password"
-        required
+  <div class="modern-clientarea-auth">
+    <AuthCard :title="t('clientarea.auth.title')" :description="t('clientarea.auth.description')">
+      <AppSegmentedControl
+        :model-value="mode"
+        :options="tabs"
+        :label="t('clientarea.auth.title')"
+        appearance="field"
+        @update:model-value="switchMode"
       />
-      <AppButton variant="primary" type="submit" :disabled="busy">
-        {{ mode === 'login' ? t('clientarea.auth.login') : t('clientarea.auth.signup') }}
-      </AppButton>
-    </form>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <AppButton variant="text" @click="mode = mode === 'login' ? 'signup' : 'login'">
-      {{
-        mode === 'login' ? t('clientarea.auth.switchToSignup') : t('clientarea.auth.switchToLogin')
-      }}
-    </AppButton>
-  </section>
+      <form class="modern-clientarea-auth-form" novalidate @submit.prevent="submit">
+        <AppTextField
+          v-model="email"
+          :label="t('clientarea.auth.email')"
+          name="email"
+          type="email"
+          autocomplete="email"
+          autocapitalize="none"
+          :spellcheck="false"
+          :disabled="busy"
+        />
+        <AppTextField
+          v-model="password"
+          :label="t('clientarea.auth.password')"
+          name="password"
+          type="password"
+          :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'"
+          :disabled="busy"
+        />
+        <AppTextField
+          v-if="mode === 'signup'"
+          v-model="confirm"
+          :label="t('clientarea.auth.confirmPassword')"
+          name="password-confirm"
+          type="password"
+          autocomplete="new-password"
+          :disabled="busy"
+          :error="confirmError || undefined"
+        />
+        <AppNotice v-if="error" tone="danger">{{ error }}</AppNotice>
+        <AppButton
+          class="modern-clientarea-auth-submit"
+          variant="primary"
+          type="submit"
+          :loading="busy"
+        >
+          {{ t(mode === 'signup' ? 'clientarea.auth.signup' : 'clientarea.auth.login') }}
+        </AppButton>
+      </form>
+      <p class="modern-clientarea-auth-switch">
+        {{
+          t(mode === 'signup' ? 'clientarea.auth.switchToLogin' : 'clientarea.auth.switchToSignup')
+        }}
+      </p>
+    </AuthCard>
+  </div>
 </template>
 
 <style scoped>
 .modern-clientarea-auth {
   display: grid;
   justify-items: center;
-  gap: var(--modern-space-4);
+  width: min(100%, 480px);
   padding: var(--modern-space-12) var(--modern-content-inset);
-  text-align: center;
 }
 .modern-clientarea-auth-form {
   display: grid;
-  gap: var(--modern-space-3);
-  width: min(100%, 320px);
+  gap: var(--modern-space-4);
+}
+.modern-clientarea-auth-submit {
+  width: 100%;
+}
+.modern-clientarea-auth-switch {
+  color: var(--modern-muted);
+  font-size: var(--modern-font-size-small);
+  text-align: center;
 }
 </style>
