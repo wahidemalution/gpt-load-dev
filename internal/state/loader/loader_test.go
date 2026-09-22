@@ -657,8 +657,10 @@ func TestLoaderMapsAccessAndCredentials(t *testing.T) {
 	}
 	secondGroup := createRuntimeGroup(t, db, "second", protocol.Anthropic, "claude-3-5-sonnet")
 
+	ownerID := uint(42)
 	activeAccess := models.AccessKey{
 		Name: "active access", KeyValue: "access-cipher-active", KeyHash: "active-hash",
+		UserID:    &ownerID,
 		KeySuffix: "0003", Status: "active", ExpiresAtMS: int64Pointer(1_900_000_000_000),
 		Filters: models.JSON(fmt.Sprintf(
 			`{"groups":[%d,9999],"protocols":["openai-completions"],"models":["Primary"],"allowed_cidrs":["192.0.2.99/24","2001:db8::1"]}`,
@@ -702,6 +704,9 @@ func TestLoaderMapsAccessAndCredentials(t *testing.T) {
 	}
 	if _, ok := snapshot.AccessKeysByHash[disabledAccess.KeyHash]; ok {
 		t.Fatalf("disabled access hash %q is present in snapshot", disabledAccess.KeyHash)
+	}
+	if access.UserID != ownerID {
+		t.Fatalf("snapshot access key UserID = %d, want %d (owner must reach the gateway balance gate)", access.UserID, ownerID)
 	}
 	if got := snapshot.AccessKeysByID[disabledAccess.ID]; got.ID != disabledAccess.ID ||
 		got.Status != state.AccessKeyStatusDisabled || got.Name != disabledAccess.Name {

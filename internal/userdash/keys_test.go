@@ -194,3 +194,61 @@ func TestKeysUsageScopedToOwnedKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnedKeyMutationsRepublishRuntimeState(t *testing.T) {
+	env := newHTTPTestEnv(t)
+	ctx := context.Background()
+
+	created, err := env.service.Signup(ctx, "refresh@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Signup() error = %v", err)
+	}
+
+	refreshes := 0
+	env.service.WithStateRefresher(func(context.Context) error {
+		refreshes++
+		return nil
+	})
+
+	view, _, err := env.service.CreateOwnedKey(ctx, created.ID, "refresh-key")
+	if err != nil {
+		t.Fatalf("CreateOwnedKey() error = %v", err)
+	}
+	if refreshes != 1 {
+		t.Fatalf("refreshes after create = %d, want 1 (gateway must observe the new key)", refreshes)
+	}
+
+	if err := env.service.DisableOwnedKey(ctx, created.ID, view.ID); err != nil {
+		t.Fatalf("DisableOwnedKey() error = %v", err)
+	}
+	if refreshes != 2 {
+		t.Fatalf("refreshes after disable = %d, want 2 (gateway must observe the disabled key)", refreshes)
+	}
+}
+
+func TestPatchAdminUserDisableRepublishesRuntimeState(t *testing.T) {
+	env := newHTTPTestEnv(t)
+	ctx := context.Background()
+
+	created, err := env.service.Signup(ctx, "cascade@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Signup() error = %v", err)
+	}
+	if _, _, err := env.service.CreateOwnedKey(ctx, created.ID, "cascade-key"); err != nil {
+		t.Fatalf("CreateOwnedKey() error = %v", err)
+	}
+
+	refreshes := 0
+	env.service.WithStateRefresher(func(context.Context) error {
+		refreshes++
+		return nil
+	})
+
+	disabled := models.UserStatusDisabled
+	if _, err := env.service.PatchAdminUser(ctx, created.ID, AdminPatchInput{Status: &disabled}); err != nil {
+		t.Fatalf("PatchAdminUser() error = %v", err)
+	}
+	if refreshes != 1 {
+		t.Fatalf("refreshes after disable cascade = %d, want 1", refreshes)
+	}
+}

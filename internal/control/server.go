@@ -75,6 +75,16 @@ func NewServer(cfg *config.Config, service *Service) *Server {
 	}
 }
 
+// RefreshRuntimeState republishes the committed configuration so data-plane
+// readers observe mutations that bypass the control write path (for example
+// user-owned access keys minted by the client-area service).
+func (s *Server) RefreshRuntimeState(ctx context.Context) error {
+	if s == nil || s.service == nil {
+		return nil
+	}
+	return s.service.recoverCommittedRuntime(ctx, false)
+}
+
 // NewServerWithReleaseUpdateChecker wires the on-demand public update checker.
 func NewServerWithReleaseUpdateChecker(
 	cfg *config.Config,

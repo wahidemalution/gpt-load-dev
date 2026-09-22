@@ -96,6 +96,9 @@ func (s *Service) CreateOwnedKey(ctx context.Context, userID uint, name string) 
 	if err != nil {
 		return OwnedKeyView{}, "", err
 	}
+	if err := s.refreshRuntime(ctx); err != nil {
+		return OwnedKeyView{}, "", err
+	}
 	return view, plaintext, nil
 }
 
@@ -136,7 +139,7 @@ func (s *Service) DisableOwnedKey(ctx context.Context, userID, keyID uint) error
 	if result.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
 	}
-	return nil
+	return s.refreshRuntime(ctx)
 }
 
 func (m *HTTPModule) handleListKeys(c *gin.Context) {

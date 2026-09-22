@@ -241,6 +241,7 @@ func (s *Service) PatchAdminUser(ctx context.Context, userID uint, input AdminPa
 	}
 
 	var view AdminUserView
+	cascadeDisabledKeys := false
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var user models.User
 		if err := tx.First(&user, userID).Error; err != nil {
@@ -272,6 +273,7 @@ func (s *Service) PatchAdminUser(ctx context.Context, userID uint, input AdminPa
 				Update("status", "disabled").Error; err != nil {
 				return err
 			}
+			cascadeDisabledKeys = true
 		}
 		decorated, err := adminViewInTx(tx, user)
 		if err != nil {
@@ -282,6 +284,11 @@ func (s *Service) PatchAdminUser(ctx context.Context, userID uint, input AdminPa
 	})
 	if err != nil {
 		return AdminUserView{}, err
+	}
+	if cascadeDisabledKeys {
+		if err := s.refreshRuntime(ctx); err != nil {
+			return AdminUserView{}, err
+		}
 	}
 	return view, nil
 }

@@ -42,6 +42,10 @@ type Service struct {
 	random    io.Reader
 	now       func() time.Time
 	encryptor encryption.Service
+
+	// refreshState republishes the committed runtime snapshot so the gateway
+	// observes keys this service writes outside the control write path.
+	refreshState func(context.Context) error
 }
 
 func NewService(db *gorm.DB, random io.Reader, now func() time.Time) *Service {
@@ -60,6 +64,24 @@ func NewService(db *gorm.DB, random io.Reader, now func() time.Time) *Service {
 func (s *Service) WithEncryptor(encryptor encryption.Service) *Service {
 	s.encryptor = encryptor
 	return s
+}
+
+// WithStateRefresher installs the hook that republishes the committed runtime
+// snapshot after this service mutates access keys directly. Nil-tolerant: when
+// unset, key changes are only visible after the next control write or restart.
+func (s *Service) WithStateRefresher(refresh func(context.Context) error) *Service {
+	s.refreshState = refresh
+	return s
+}
+
+// refreshRuntime republishes the gateway-visible snapshot. A failure is
+// returned so the caller can surface it; the persisted mutation is already
+// committed and is picked up on the next control write or restart.
+func (s *Service) refreshRuntime(ctx context.Context) error {
+	if s.refreshState == nil {
+		return nil
+	}
+	return s.refreshState(ctx)
 }
 
 type Profile struct {

@@ -335,7 +335,9 @@ func newHTTPRegistry(
 	db *gorm.DB,
 	encryptionService encryption.Service,
 ) (*httproute.Registry, error) {
-	userdashService := userdash.NewService(db, nil, nil).WithEncryptor(encryptionService)
+	userdashService := userdash.NewService(db, nil, nil).
+		WithEncryptor(encryptionService).
+		WithStateRefresher(controlServer.RefreshRuntimeState)
 	userdashModule := userdash.NewHTTPModule(
 		userdashService,
 		logrus.StandardLogger(),
