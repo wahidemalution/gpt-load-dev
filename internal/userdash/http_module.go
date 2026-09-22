@@ -14,6 +14,7 @@ import (
 
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/httproute"
+	"gpt-load/internal/platform/i18n"
 	"gpt-load/internal/platform/response"
 	"gpt-load/internal/platform/utils"
 )
@@ -32,10 +33,6 @@ const (
 type rateEntry struct {
 	failures    []time.Time
 	lockedUntil time.Time
-}
-
-type rateDecision struct {
-	retryAfter time.Duration
 }
 
 // failureLimiter is a minimal per-IP failure limiter shared by login+signup,
@@ -126,29 +123,25 @@ func retainRecent(values []time.Time, cutoff time.Time) []time.Time {
 // HTTPModule serves the client-area REST surface (signup/login/logout/me/models).
 type HTTPModule struct {
 	service        *Service
-	logger         *logrus.Logger
 	modelsProvider func(ctx context.Context) (any, error)
 	failures       *failureLimiter
 }
 
 // NewHTTPModule wires the client-area HTTP module. modelsProvider may be nil
 // only if GET /models is never called; the container injects the landing
-// models query. Pass nil logger to use the standard logrus logger.
+// models query. The logger parameter is kept for signature stability with
+// sibling modules; logging uses the standard logrus logger.
 func NewHTTPModule(
 	service *Service,
-	logger *logrus.Logger,
+	_ *logrus.Logger,
 	modelsProvider func(ctx context.Context) (any, error),
 ) *HTTPModule {
-	if logger == nil {
-		logger = logrus.StandardLogger()
-	}
 	now := time.Now
 	if service != nil && service.now != nil {
 		now = service.now
 	}
 	return &HTTPModule{
 		service:        service,
-		logger:         logger,
 		modelsProvider: modelsProvider,
 		failures:       newFailureLimiter(now),
 	}
@@ -162,6 +155,7 @@ func (m *HTTPModule) Module() httproute.Module {
 		Auth:              httproute.AuthNone,
 		Prefix:            "/api/clientarea",
 		NamespacePrefixes: []string{"/api/clientarea"},
+		BeforeAuth:        gin.HandlersChain{i18n.Middleware()},
 		Routes: []httproute.Route{
 			{
 				Name:     "clientarea.signup",
@@ -249,26 +243,46 @@ func bindCredentials(c *gin.Context) (credentialsRequest, bool) {
 }
 
 func (m *HTTPModule) writeRateLimited(c *gin.Context, retryAfter time.Duration) {
-	seconds := int64((retryAfter + time.Second - 1) / time.Second)
-	if seconds < 1 {
-		seconds = 1
-	}
+	seconds := retryAfterSeconds(retryAfter)
 	c.Header("Retry-After", strconv.FormatInt(seconds, 10))
-	response.Error(c, app_errors.ErrAuthLocked)
+	response.ErrorI18nFromAPIError(c, app_errors.NewAPIErrorWithData(
+		app_errors.ErrAuthLocked,
+		rateLockedData{RetryAfterSeconds: seconds},
+	), "auth.locked")
 }
 
-func (m *HTTPModule) handleSignup(c *gin.Context) {
-	request, ok := bindCredentials(c)
-	if !ok {
-		return
+func retryAfterSeconds(remaining time.Duration) int64 {
+	seconds := int64((remaining + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		return 1
 	}
+	return seconds
+}
+
+type rateLockedData struct {
+	RetryAfterSeconds int64 `json:"retry_after_seconds"`
+}
+
+func (m *HTTPModule) rateLimitPeer(c *gin.Context) (string, bool) {
 	peer, err := utils.NormalizePeerIP(c.Request.RemoteAddr)
 	if err != nil {
 		response.Error(c, app_errors.ErrInternalServer)
-		return
+		return "", true
 	}
 	if retryAfter, locked := m.failures.check(peer); locked {
 		m.writeRateLimited(c, retryAfter)
+		return peer, true
+	}
+	return peer, false
+}
+
+func (m *HTTPModule) handleSignup(c *gin.Context) {
+	peer, limited := m.rateLimitPeer(c)
+	if limited {
+		return
+	}
+	request, ok := bindCredentials(c)
+	if !ok {
 		return
 	}
 	profile, err := m.service.Signup(c.Request.Context(), request.Email, request.Password)
@@ -284,17 +298,12 @@ func (m *HTTPModule) handleSignup(c *gin.Context) {
 }
 
 func (m *HTTPModule) handleLogin(c *gin.Context) {
+	peer, limited := m.rateLimitPeer(c)
+	if limited {
+		return
+	}
 	request, ok := bindCredentials(c)
 	if !ok {
-		return
-	}
-	peer, err := utils.NormalizePeerIP(c.Request.RemoteAddr)
-	if err != nil {
-		response.Error(c, app_errors.ErrInternalServer)
-		return
-	}
-	if retryAfter, locked := m.failures.check(peer); locked {
-		m.writeRateLimited(c, retryAfter)
 		return
 	}
 	token, profile, expiresAt, err := m.service.Login(c.Request.Context(), request.Email, request.Password)

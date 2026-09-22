@@ -51,17 +51,19 @@ func newHTTPTestEnv(t *testing.T) *httpTestEnv {
 
 func (e *httpTestEnv) do(method, path, token string, body any) *httptest.ResponseRecorder {
 	t := e.t
-	var reader *bytes.Reader
+	var raw []byte
 	if body != nil {
-		raw, err := json.Marshal(body)
+		encoded, err := json.Marshal(body)
 		if err != nil {
 			t.Fatalf("marshal request body: %v", err)
 		}
-		reader = bytes.NewReader(raw)
-	} else {
-		reader = bytes.NewReader(nil)
+		raw = encoded
 	}
-	request := httptest.NewRequest(method, path, reader)
+	return e.doRaw(method, path, token, raw)
+}
+
+func (e *httpTestEnv) doRaw(method, path, token string, rawBody []byte) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, path, bytes.NewReader(rawBody))
 	request.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
@@ -72,7 +74,7 @@ func (e *httpTestEnv) do(method, path, token string, body any) *httptest.Respons
 }
 
 type envelope struct {
-	Code    int             `json:"code"`
+	Code    json.RawMessage `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
 }
@@ -277,6 +279,24 @@ func TestHTTPRateLimit(t *testing.T) {
 	}
 	if locked.Header().Get("Retry-After") == "" {
 		t.Error("429 response missing Retry-After header")
+	}
+	lockedPayload := decodeEnvelope(t, locked)
+	var lockedData struct {
+		RetryAfterSeconds int64 `json:"retry_after_seconds"`
+	}
+	if err := json.Unmarshal(lockedPayload.Data, &lockedData); err != nil {
+		t.Fatalf("decode 429 data: %v", err)
+	}
+	if lockedData.RetryAfterSeconds < 1 {
+		t.Fatalf("retry_after_seconds = %d, want >= 1", lockedData.RetryAfterSeconds)
+	}
+
+	malformedWhileLocked := env.doRaw(http.MethodPost, "/api/clientarea/login", "", []byte("{not json"))
+	if malformedWhileLocked.Code != http.StatusTooManyRequests {
+		t.Fatalf(
+			"malformed login while locked = %d %s, want 429",
+			malformedWhileLocked.Code, malformedWhileLocked.Body.String(),
+		)
 	}
 
 	signupLocked := env.do(http.MethodPost, "/api/clientarea/signup", "", map[string]string{
