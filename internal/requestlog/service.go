@@ -148,6 +148,14 @@ func (service *Service) SetUserDeductor(
 	}
 	if writer, ok := service.writer.(*gormBatchWriter); ok {
 		writer.userDeductor = deductor
+	} else {
+		utils.LogPlaneBestEffort(
+			service.logger,
+			logrus.WarnLevel,
+			utils.LogPlaneData,
+			logrus.Fields{"event": "request_log.user_deductor_not_installable"},
+			"user deductor not installed: batch writer does not support transaction-scoped deduction",
+		)
 	}
 }
 
