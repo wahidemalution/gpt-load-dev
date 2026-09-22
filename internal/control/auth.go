@@ -65,6 +65,13 @@ func retryAfterSeconds(remaining time.Duration) int64 {
 	return seconds
 }
 
+// AdminAuthenticate exposes the control admin authenticator for sibling
+// AuthControl modules (e.g. the admin user-management surface) so the admin
+// credential contract stays identical across modules.
+func (s *Server) AdminAuthenticate() gin.HandlerFunc {
+	return s.authenticate()
+}
+
 func (s *Server) authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		peer, err := utils.NormalizePeerIP(c.Request.RemoteAddr)

@@ -337,11 +337,13 @@ func newHTTPRegistry(
 			return controlServer.PublicLandingModels(ctx)
 		},
 	)
+	adminUserModule := userdash.NewAdminHTTPModule(userdashService, controlServer.AdminAuthenticate())
 	return httproute.NewRegistry(
 		app.HTTPModule(),
 		controlServer.LandingPublicHTTPModule(),
 		controlServer.HTTPModule(),
 		userdashModule.Module(),
+		adminUserModule.Module(),
 		gatewayHandler.HTTPModule(),
 		webUIServer.HTTPModule(),
 	)

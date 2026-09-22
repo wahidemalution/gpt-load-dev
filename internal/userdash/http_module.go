@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/httproute"
@@ -232,6 +233,8 @@ func mapServiceError(c *gin.Context, err error) {
 		response.Error(c, app_errors.ErrUnauthorized)
 	case errors.Is(err, ErrUserDisabled):
 		response.Error(c, app_errors.ErrForbidden)
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		response.Error(c, app_errors.ErrResourceNotFound)
 	default:
 		logrus.WithError(err).Error("userdash: internal error")
 		response.Error(c, app_errors.ErrInternalServer)
