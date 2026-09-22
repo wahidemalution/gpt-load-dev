@@ -212,7 +212,8 @@ export default {
     password: 'パスワード',
     passwordHint: '空欄の場合は自動生成されます。',
     maxApiKeys: 'API キー上限',
-    maxApiKeysHint: 'このユーザーが作成できる API キーの最大数。既定は 3 です。',
+    maxApiKeysHint:
+      'このユーザーが作成できる API キーの最大数。空欄または 0 の場合は既定の 3 になります。',
     initialBalance: '初期残高（USD）',
     initialBalanceHint: '任意。入金として残高履歴に記録されます。',
     invalid: '入力内容を確認して再試行してください。',
@@ -227,6 +228,8 @@ export default {
     empty: 'ユーザーがいません',
     emptyHelp: '最初のユーザーアカウントを作成してください。',
     noResults: '一致するユーザーがありません',
+    outOfRange: 'このページは範囲外です',
+    outOfRangeHelp: 'ユーザー一覧が変更されました。下のページ送りで有効なページに戻ってください。',
     loadFailed: 'ユーザーを読み込めません',
     stale: '一覧を更新できませんでした。最後に読み込んだデータを表示しています。',
     never: 'なし',

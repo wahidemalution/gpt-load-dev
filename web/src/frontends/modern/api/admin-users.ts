@@ -1,6 +1,6 @@
 import type { ApiClient } from '@shared/http/client'
 import { InvalidResponseError } from '@shared/http/errors'
-import { integer, list, record, text } from './response'
+import { integer, list, record, signedInteger, text } from './response'
 
 export interface AdminUserView {
   id: number
@@ -72,12 +72,6 @@ export interface AdminAdjustmentsPage {
   items: AdminAdjustmentView[]
 }
 
-function readBalance(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
-    throw new InvalidResponseError()
-  return value
-}
-
 function readStatus(value: unknown): string {
   const status = text(value)
   if (status !== 'active' && status !== 'disabled') throw new InvalidResponseError()
@@ -90,7 +84,7 @@ export function readAdminUserView(value: unknown): AdminUserView {
     id: integer(row.id, 1),
     email: text(row.email),
     status: readStatus(row.status),
-    balance_nano_usd: readBalance(row.balance_nano_usd),
+    balance_nano_usd: signedInteger(row.balance_nano_usd),
     max_api_keys: integer(row.max_api_keys),
     key_count: integer(row.key_count),
     created_at_ms: integer(row.created_at_ms),
@@ -119,7 +113,9 @@ export async function listUsers(
   if (params.page !== undefined) query.set('page', String(params.page))
   if (params.page_size !== undefined) query.set('page_size', String(params.page_size))
   const suffix = query.size > 0 ? `?${query}` : ''
-  const data = record(await client.request(`/api/admin/users${suffix}`, { ...(signal ? { signal } : {}) }))
+  const data = record(
+    await client.request(`/api/admin/users${suffix}`, { ...(signal ? { signal } : {}) }),
+  )
   return {
     items: list(data.items).map(readAdminUserView),
     total: integer(data.total),
@@ -152,7 +148,9 @@ export async function getUser(
   id: number,
   signal?: AbortSignal,
 ): Promise<AdminUserDetail> {
-  const row = record(await client.request(`/api/admin/users/${id}`, { ...(signal ? { signal } : {}) }))
+  const row = record(
+    await client.request(`/api/admin/users/${id}`, { ...(signal ? { signal } : {}) }),
+  )
   const detail = readAdminUserView(row)
   return { ...detail, keys: list(row.keys).map(readAdminUserKey) }
 }

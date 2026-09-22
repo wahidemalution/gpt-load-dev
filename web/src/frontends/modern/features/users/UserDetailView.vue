@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Ban, CircleCheck, CircleDollarSign, Users } from '@lucide/vue'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { DialogRoot } from 'reka-ui'
 import { computed, onScopeDispose, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -38,6 +38,7 @@ const { t, locale } = useI18n()
 const client = useApiClient()
 const route = useRoute()
 const router = useRouter()
+const cache = useQueryClient()
 const messages = useMessages()
 const controller = new AbortController()
 const id = computed(() => Number(route.params.id))
@@ -78,6 +79,7 @@ async function saveQuota(value: number): Promise<void> {
     await updateUser(client, id.value, { max_api_keys: value }, controller.signal)
     if (controller.signal.aborted) return
     await query.refetch()
+    void cache.invalidateQueries({ queryKey: ['modern', 'admin-users'] })
     messages.show({ text: t('users.detail.quotaSaved'), tone: 'success' })
   } catch {
     if (!controller.signal.aborted) quotaError.value = t('users.detail.quotaFailed')
@@ -104,6 +106,7 @@ async function confirmStatus(): Promise<void> {
     if (controller.signal.aborted) return
     statusTarget.value = undefined
     await query.refetch()
+    void cache.invalidateQueries({ queryKey: ['modern', 'admin-users'] })
     messages.show({ text: t('users.detail.statusSaved'), tone: 'success' })
   } catch {
     if (!controller.signal.aborted) statusError.value = t('users.detail.statusFailed')
@@ -135,6 +138,11 @@ async function submitTopup(): Promise<void> {
     topupError.value = t('users.detail.topupInvalid')
     return
   }
+  const deltaNanoUSD = Math.round(usd * 1e9)
+  if (deltaNanoUSD === 0) {
+    topupError.value = t('users.detail.topupInvalid')
+    return
+  }
   topupPending.value = true
   topupError.value = ''
   try {
@@ -142,7 +150,7 @@ async function submitTopup(): Promise<void> {
       client,
       id.value,
       {
-        delta_nano_usd: Math.round(usd * 1e9),
+        delta_nano_usd: deltaNanoUSD,
         reason: topupDraft.value.reason,
         ...(topupDraft.value.note.trim() ? { note: topupDraft.value.note.trim() } : {}),
       },
@@ -151,6 +159,7 @@ async function submitTopup(): Promise<void> {
     if (controller.signal.aborted) return
     topupOpen.value = false
     await Promise.all([query.refetch(), adjustments.refetch()])
+    void cache.invalidateQueries({ queryKey: ['modern', 'admin-users'] })
     messages.show({ text: t('users.detail.topupSaved'), tone: 'success' })
   } catch {
     if (!controller.signal.aborted) topupError.value = t('users.detail.topupFailed')

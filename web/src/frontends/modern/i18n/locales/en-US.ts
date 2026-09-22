@@ -213,7 +213,8 @@ export default {
     password: 'Password',
     passwordHint: 'Leave empty to generate a password automatically.',
     maxApiKeys: 'API key limit',
-    maxApiKeysHint: 'Maximum number of API keys this user may create. Defaults to 3.',
+    maxApiKeysHint:
+      'Maximum number of API keys this user may create. Leave empty or 0 to use the default (3).',
     initialBalance: 'Initial balance (USD)',
     initialBalanceHint: 'Optional. Recorded in the ledger as a topup.',
     invalid: 'Check the entered values and try again.',
@@ -227,6 +228,8 @@ export default {
     empty: 'No users yet',
     emptyHelp: 'Create the first user account to get started.',
     noResults: 'No matching users',
+    outOfRange: 'This page is out of range',
+    outOfRangeHelp: 'The user list changed. Use the pagination below to return to a valid page.',
     loadFailed: 'Unable to load users',
     stale: 'The list could not be refreshed; showing the last loaded data.',
     never: 'Never',

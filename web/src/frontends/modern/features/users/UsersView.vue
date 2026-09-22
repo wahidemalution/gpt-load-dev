@@ -74,6 +74,7 @@ const query = useQuery(
   })),
 )
 const rows = computed(() => query.data.value?.items ?? [])
+const outOfRange = computed(() => !rows.value.length && (query.data.value?.total ?? 0) > 0)
 const format = computed(() =>
   dateFormatter(locale.value, { dateStyle: 'medium', timeStyle: 'short' }),
 )
@@ -141,7 +142,7 @@ async function submitCreate(): Promise<void> {
       {
         email,
         ...(draft.value.password ? { password: draft.value.password } : {}),
-        ...(maxApiKeys !== undefined ? { max_api_keys: maxApiKeys } : {}),
+        ...(maxApiKeys !== undefined && maxApiKeys > 0 ? { max_api_keys: maxApiKeys } : {}),
         ...(usd !== undefined ? { balance_nano_usd: Math.round(usd * 1e9) } : {}),
       },
       controller.signal,
@@ -225,6 +226,12 @@ onScopeDispose(() => {
         <AppButton @click="query.refetch()">{{ t('ui.retry') }}</AppButton>
       </AppCollectionState>
       <AppCollectionState
+        v-else-if="outOfRange"
+        :title="t('users.outOfRange')"
+        :description="t('users.outOfRangeHelp')"
+        :icon="Users"
+      />
+      <AppCollectionState
         v-else-if="!rows.length"
         :title="t(filters.q ? 'users.noResults' : 'users.empty')"
         :description="filters.q ? undefined : t('users.emptyHelp')"
@@ -294,7 +301,7 @@ onScopeDispose(() => {
           v-model="draft.password"
           :label="t('users.password')"
           name="user-password"
-          type="text"
+          type="password"
           :description="t('users.passwordHint')"
           :disabled="creating"
           autocomplete="new-password"

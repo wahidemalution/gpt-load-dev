@@ -14,6 +14,10 @@ export function integer(value: unknown, min = 0): number {
     throw new InvalidResponseError()
   return value
 }
+export function signedInteger(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new InvalidResponseError()
+  return value
+}
 export function boolean(value: unknown): boolean {
   if (typeof value !== 'boolean') throw new InvalidResponseError()
   return value

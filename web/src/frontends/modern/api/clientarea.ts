@@ -1,6 +1,6 @@
 import type { ApiClient } from '@shared/http/client'
 import { InvalidResponseError } from '@shared/http/errors'
-import { integer, list, record, text } from './response'
+import { integer, list, record, signedInteger, text } from './response'
 import type { UserProfile } from '@modern/features/clientarea/user-session'
 
 export interface ClientAreaClient {
@@ -15,12 +15,7 @@ function readProfile(value: unknown): UserProfile {
     id: integer(row.id, 1),
     email: text(row.email),
     status,
-    balance_nano_usd: ((): number => {
-      const balance = row.balance_nano_usd
-      if (typeof balance !== 'number' || !Number.isSafeInteger(balance) || balance < 0)
-        throw new InvalidResponseError()
-      return balance
-    })(),
+    balance_nano_usd: signedInteger(row.balance_nano_usd),
     max_api_keys: integer(row.max_api_keys),
     created_at_ms: integer(row.created_at_ms),
   }
@@ -88,7 +83,9 @@ function readModel(value: unknown): ClientAreaModel {
       input: prices.input === null || prices.input === undefined ? null : text(prices.input),
       output: prices.output === null || prices.output === undefined ? null : text(prices.output),
       cache_read:
-        prices.cache_read === null || prices.cache_read === undefined ? null : text(prices.cache_read),
+        prices.cache_read === null || prices.cache_read === undefined
+          ? null
+          : text(prices.cache_read),
       cache_write:
         prices.cache_write === null || prices.cache_write === undefined
           ? null
