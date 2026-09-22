@@ -173,6 +173,20 @@ func TestAdminHTTPCreateUser(t *testing.T) {
 	if created.InitialPassword != "" {
 		t.Fatalf("initial_password leaked when admin supplied a password: %q", created.InitialPassword)
 	}
+	// Regression: the create response must carry the full AdminUserView, not the
+	// bare Profile; the committed frontend parser requires both numeric fields.
+	var rawCreate struct {
+		Profile map[string]any `json:"profile"`
+	}
+	if err := json.Unmarshal(payload.Data, &rawCreate); err != nil {
+		t.Fatalf("decode raw create response: %v", err)
+	}
+	if _, ok := rawCreate.Profile["key_count"].(float64); !ok {
+		t.Fatalf("create response profile missing numeric key_count: %#v", rawCreate.Profile)
+	}
+	if _, ok := rawCreate.Profile["last_login_at_ms"].(float64); !ok {
+		t.Fatalf("create response profile missing numeric last_login_at_ms: %#v", rawCreate.Profile)
+	}
 
 	duplicate := env.do(http.MethodPost, "/api/admin/users",
 		`{"email":"admin-created@example.com","password":"password2"}`)
@@ -346,6 +360,17 @@ func TestAdminHTTPAdjustments(t *testing.T) {
 	}
 	if afterTopup.BalanceNanoUSD != 5000 {
 		t.Fatalf("balance after topup = %d, want 5000", afterTopup.BalanceNanoUSD)
+	}
+	// Regression: the adjustment response must carry the full AdminUserView.
+	var rawAdjustment map[string]any
+	if err := json.Unmarshal(topupPayload.Data, &rawAdjustment); err != nil {
+		t.Fatalf("decode raw adjustment response: %v", err)
+	}
+	if _, ok := rawAdjustment["key_count"].(float64); !ok {
+		t.Fatalf("adjustment response missing numeric key_count: %#v", rawAdjustment)
+	}
+	if _, ok := rawAdjustment["last_login_at_ms"].(float64); !ok {
+		t.Fatalf("adjustment response missing numeric last_login_at_ms: %#v", rawAdjustment)
 	}
 
 	correction := env.do(http.MethodPost, base+"/adjustments",

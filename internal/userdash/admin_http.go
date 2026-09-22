@@ -88,8 +88,8 @@ type adminCreateUserRequest struct {
 }
 
 type adminCreateUserResponse struct {
-	Profile         Profile `json:"profile"`
-	InitialPassword string  `json:"initial_password,omitempty"`
+	Profile         AdminUserView `json:"profile"`
+	InitialPassword string        `json:"initial_password,omitempty"`
 }
 
 func (m *AdminHTTPModule) handleCreateUser(c *gin.Context) {
@@ -108,8 +108,13 @@ func (m *AdminHTTPModule) handleCreateUser(c *gin.Context) {
 		mapServiceError(c, err)
 		return
 	}
+	view, err := m.service.GetAdminUser(c.Request.Context(), profile.ID)
+	if err != nil {
+		mapServiceError(c, err)
+		return
+	}
 	response.SuccessI18n(c, "common.success", adminCreateUserResponse{
-		Profile:         profile,
+		Profile:         view.AdminUserView,
 		InitialPassword: initialPassword,
 	})
 }
@@ -169,16 +174,20 @@ func (m *AdminHTTPModule) handleCreateAdjustment(c *gin.Context) {
 		response.Error(c, app_errors.ErrInvalidJSON)
 		return
 	}
-	profile, err := m.service.CreateAdminAdjustment(c.Request.Context(), id, AdminAdjustmentInput{
+	if _, err := m.service.CreateAdminAdjustment(c.Request.Context(), id, AdminAdjustmentInput{
 		DeltaNanoUSD: request.DeltaNanoUSD,
 		Reason:       request.Reason,
 		Note:         request.Note,
-	})
+	}); err != nil {
+		mapServiceError(c, err)
+		return
+	}
+	view, err := m.service.GetAdminUser(c.Request.Context(), id)
 	if err != nil {
 		mapServiceError(c, err)
 		return
 	}
-	response.SuccessI18n(c, "common.success", profile)
+	response.SuccessI18n(c, "common.success", view.AdminUserView)
 }
 
 func (m *AdminHTTPModule) handleListAdjustments(c *gin.Context) {
