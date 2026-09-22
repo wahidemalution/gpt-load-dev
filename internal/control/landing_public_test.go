@@ -96,7 +96,14 @@ func TestLandingPublicReturnsModelsAndAllTimeStatsWithoutAuth(t *testing.T) {
 		Code int `json:"code"`
 		Data struct {
 			Models []struct {
-				Name string `json:"name"`
+				Name    string `json:"name"`
+				Context *int64 `json:"context"`
+				Prices  struct {
+					Input      *string `json:"input"`
+					Output     *string `json:"output"`
+					CacheRead  *string `json:"cache_read"`
+					CacheWrite *string `json:"cache_write"`
+				} `json:"prices"`
 			} `json:"models"`
 			Stats struct {
 				TotalRequests int64 `json:"total_requests"`

@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"sync"
@@ -16,8 +17,17 @@ import (
 
 const landingPublicCacheTTL = 60 * time.Second
 
+type landingPublicPriceSlots struct {
+	Input      *string `json:"input"`
+	Output     *string `json:"output"`
+	CacheRead  *string `json:"cache_read"`
+	CacheWrite *string `json:"cache_write"`
+}
+
 type landingPublicModelResponse struct {
-	Name string `json:"name"`
+	Name    string                  `json:"name"`
+	Context *int64                  `json:"context"`
+	Prices  landingPublicPriceSlots `json:"prices"`
 }
 
 type landingPublicStatsResponse struct {
@@ -58,6 +68,55 @@ func (s *Server) LandingPublicHTTPModule() httproute.Module {
 	}
 }
 
+// PublicLandingModels returns the deduplicated, price-annotated model list
+// shown on the public landing page. Reused by the client-area /models route.
+func (s *Server) PublicLandingModels(ctx context.Context) ([]landingPublicModelResponse, error) {
+	models, err := s.service.ListProjectModels(ctx, ProjectModelListQuery{
+		GroupStatus:   ProjectModelGroupStatusEnabled,
+		PricingStatus: ProjectModelPricingStatusAll,
+		Page:          1,
+		PageSize:      maxProjectModelPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// ponytail: only the first 100 models are exposed; add page loop when a
+	// deployment serves more than 100 distinct client models.
+	seen := make(map[string]struct{}, len(models.Items))
+	byName := make(map[string]*landingPublicModelResponse, len(models.Items))
+	for _, item := range models.Items {
+		if _, exists := seen[item.ClientModel]; exists {
+			continue
+		}
+		seen[item.ClientModel] = struct{}{}
+		entry := &landingPublicModelResponse{Name: item.ClientModel}
+		if len(item.UpstreamModels) > 0 {
+			upstream := item.UpstreamModels[0]
+			entry.Prices = landingPublicPriceSlots{
+				Input:      upstream.Price.Prices.Input,
+				Output:     upstream.Price.Prices.Output,
+				CacheRead:  upstream.Price.Prices.CacheRead,
+				CacheWrite: upstream.Price.Prices.CacheWrite,
+			}
+			if reference := upstream.CatalogReference; reference != nil {
+				entry.Context = reference.Model.Limits.Context
+			}
+		}
+		byName[item.ClientModel] = entry
+	}
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	payload := make([]landingPublicModelResponse, 0, len(names))
+	for _, name := range names {
+		payload = append(payload, *byName[name])
+	}
+	return payload, nil
+}
+
 func (s *Server) handleLandingPublic(c *gin.Context) {
 	now := s.now()
 	if payload, ok := s.landingPublicCache.get(now); ok {
@@ -66,28 +125,11 @@ func (s *Server) handleLandingPublic(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	models, err := s.service.ListProjectModels(ctx, ProjectModelListQuery{
-		GroupStatus:   ProjectModelGroupStatusEnabled,
-		PricingStatus: ProjectModelPricingStatusAll,
-		Page:          1,
-		PageSize:      maxProjectModelPageSize,
-	})
+	landingModels, err := s.PublicLandingModels(ctx)
 	if err != nil {
 		writeServiceError(c, "landing_public", err)
 		return
 	}
-	// ponytail: only the first 100 models are exposed; add page loop when a
-	// deployment serves more than 100 distinct client models.
-	seen := make(map[string]struct{}, len(models.Items))
-	names := make([]string, 0, len(models.Items))
-	for _, item := range models.Items {
-		if _, exists := seen[item.ClientModel]; exists {
-			continue
-		}
-		seen[item.ClientModel] = struct{}{}
-		names = append(names, item.ClientModel)
-	}
-	sort.Strings(names)
 
 	nowMS, err := safeEpochMilliseconds(now)
 	if err != nil {
@@ -106,14 +148,11 @@ func (s *Server) handleLandingPublic(c *gin.Context) {
 	}
 
 	payload := &landingPublicResponse{
-		Models: make([]landingPublicModelResponse, 0, len(names)),
+		Models: landingModels,
 		Stats: landingPublicStatsResponse{
 			TotalRequests: aggregate.RequestCount,
 			TotalTokens:   aggregate.TotalTokens,
 		},
-	}
-	for _, name := range names {
-		payload.Models = append(payload.Models, landingPublicModelResponse{Name: name})
 	}
 	s.landingPublicCache.set(now, payload)
 	response.SuccessI18n(c, "common.success", payload)

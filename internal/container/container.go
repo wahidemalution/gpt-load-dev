@@ -2,6 +2,7 @@
 package container
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -40,6 +41,7 @@ import (
 	subscriptionproviders "gpt-load/internal/subscription/providers"
 	subscriptionruntime "gpt-load/internal/subscription/runtime"
 	"gpt-load/internal/telemetry"
+	"gpt-load/internal/userdash"
 	"gpt-load/internal/webui"
 
 	"github.com/sirupsen/logrus"
@@ -324,11 +326,21 @@ func newHTTPRegistry(
 	gatewayHandler *gateway.Handler,
 	controlServer *control.Server,
 	webUIServer *webui.Server,
+	db *gorm.DB,
 ) (*httproute.Registry, error) {
+	userdashService := userdash.NewService(db, nil, nil)
+	userdashModule := userdash.NewHTTPModule(
+		userdashService,
+		logrus.StandardLogger(),
+		func(ctx context.Context) (any, error) {
+			return controlServer.PublicLandingModels(ctx)
+		},
+	)
 	return httproute.NewRegistry(
 		app.HTTPModule(),
 		controlServer.LandingPublicHTTPModule(),
 		controlServer.HTTPModule(),
+		userdashModule.Module(),
 		gatewayHandler.HTTPModule(),
 		webUIServer.HTTPModule(),
 	)
