@@ -94,7 +94,11 @@ func BuildContainer() (*dig.Container, error) {
 		) *requestlog.Service {
 			service := requestlog.NewService(db, redactor, retention, quotaRuntime)
 			service.SetPassiveQuotaFlusher(subscriptionCredentials)
+			service.SetUserDeductor(userdash.DeductCosts)
 			return service
+		},
+		func(db *gorm.DB) *userdash.BalanceGate {
+			return userdash.NewBalanceGate(userdash.UserBalanceProvider(db), 30*time.Second)
 		},
 		func(service *requestlog.Service) telemetry.RequestLogSink {
 			return service
@@ -236,7 +240,9 @@ func BuildContainer() (*dig.Container, error) {
 		engine *gin.Engine,
 		registry *httproute.Registry,
 		gatewayHandler *gateway.Handler,
+		balanceGate *userdash.BalanceGate,
 	) error {
+		gatewayHandler.SetBalanceGate(balanceGate)
 		engine.Use(gatewayHandler.DownstreamHeadersMiddleware())
 		return registry.Bind(engine)
 	}); err != nil {

@@ -800,7 +800,7 @@ func mapAccessKeys(
 		}
 		result = append(result, state.AccessKeyConfig{
 			PriceMultiplier: &multiplier,
-			ID:              row.ID, Name: row.Name, KeyHash: row.KeyHash, KeyPrefix: *row.KeyPrefix, KeySuffix: row.KeySuffix,
+			ID:              row.ID, UserID: derefUserID(row.UserID), Name: row.Name, KeyHash: row.KeyHash, KeyPrefix: *row.KeyPrefix, KeySuffix: row.KeySuffix,
 			Status: state.AccessKeyStatus(row.Status), Filters: filters.toState(), RPMLimit: row.RPMLimit,
 			ExpiresAtMS: cloneInt64Pointer(row.ExpiresAtMS), AllowedPeerCIDRs: allowedPeerCIDRs,
 			CostLimitRules: append([]accessquota.Rule(nil), rulesByAccessKey[row.ID]...),
@@ -845,6 +845,13 @@ func cloneInt64Pointer(value *int64) *int64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func derefUserID(value *uint) uint {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func mapCredentialConfigs(

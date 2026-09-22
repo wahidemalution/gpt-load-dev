@@ -16,6 +16,7 @@ import (
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/telemetry"
 	"gpt-load/internal/usage"
+	"gpt-load/internal/userdash"
 )
 
 const requestLogTransactionCleanupTimeout = time.Second
@@ -34,6 +35,9 @@ func (timer *realWorkerTimer) Stop() bool {
 
 type gormBatchWriter struct {
 	db *gorm.DB
+	// userDeductor subtracts per-key request costs from owner balances inside
+	// the journal-commit transaction. Nil disables user-key deduction.
+	userDeductor func(ctx context.Context, tx *gorm.DB, costs []userdash.AccessKeyCost) error
 }
 
 func (writer *gormBatchWriter) WriteBatch(ctx context.Context, rows []models.RequestLog) error {
@@ -62,7 +66,22 @@ func (writer *gormBatchWriter) WriteBatch(ctx context.Context, rows []models.Req
 		if err := stageUsageAggregationJournals(transaction, journals); err != nil {
 			return err
 		}
-		return writeRequestLogBatch(transaction, newRows)
+		if err := writeRequestLogBatch(transaction, newRows); err != nil {
+			return err
+		}
+		if writer.userDeductor != nil {
+			costs := make([]userdash.AccessKeyCost, 0, len(newRows))
+			for _, row := range newRows {
+				costs = append(costs, userdash.AccessKeyCost{
+					AccessKeyID: row.AccessKeyID,
+					CostNanoUSD: row.EstimatedCostNanoUSD,
+				})
+			}
+			if err := writer.userDeductor(ctx, transaction, costs); err != nil {
+				return fmt.Errorf("deduct user balance costs: %w", err)
+			}
+		}
+		return nil
 	})
 }
 

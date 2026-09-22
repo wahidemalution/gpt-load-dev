@@ -15,6 +15,7 @@ import (
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/telemetry"
+	"gpt-load/internal/userdash"
 )
 
 const (
@@ -133,6 +134,20 @@ func (service *Service) wakeAccessQuotaCheckpoint() {
 	select {
 	case service.quotaWake <- struct{}{}:
 	default:
+	}
+}
+
+// SetUserDeductor installs the balance deduction hook invoked inside the
+// journal-commit transaction for rows persisted in that commit. Call it
+// before Start; a nil deductor disables user-key cost deduction.
+func (service *Service) SetUserDeductor(
+	deductor func(ctx context.Context, tx *gorm.DB, costs []userdash.AccessKeyCost) error,
+) {
+	if service == nil {
+		return
+	}
+	if writer, ok := service.writer.(*gormBatchWriter); ok {
+		writer.userDeductor = deductor
 	}
 }
 

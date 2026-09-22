@@ -20,6 +20,7 @@ const (
 	accessKeyAuthFailureInvalid        accessKeyAuthFailureReason = "invalid_access_key"
 	accessKeyAuthFailureExpired        accessKeyAuthFailureReason = "access_key_expired"
 	accessKeyAuthFailurePeerNotAllowed accessKeyAuthFailureReason = "peer_not_allowed"
+	accessKeyAuthFailureNoBalance      accessKeyAuthFailureReason = "insufficient_balance"
 )
 
 func authenticate(
@@ -27,6 +28,7 @@ func authenticate(
 	snapshot *state.ConfigSnapshot,
 	hasher keyHasher,
 	requestStarted time.Time,
+	balanceGate AccessKeyBalanceGate,
 ) (state.AccessKeyView, bool, accessKeyAuthFailureReason) {
 	if request == nil || snapshot == nil || hasher == nil {
 		return state.AccessKeyView{}, false, accessKeyAuthFailureInvalid
@@ -47,6 +49,9 @@ func authenticate(
 		if err != nil || !utils.AllowedCIDRsContain(accessKey.AllowedPeerCIDRs, peer) {
 			return accessKey, false, accessKeyAuthFailurePeerNotAllowed
 		}
+	}
+	if accessKey.UserID != 0 && balanceGate != nil && !balanceGate.Allow(accessKey.UserID) {
+		return accessKey, false, accessKeyAuthFailureNoBalance
 	}
 	return accessKey, true, ""
 }

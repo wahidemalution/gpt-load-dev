@@ -68,6 +68,11 @@ var (
 		Code:    "access_key_cost_limit_exceeded",
 		Message: "Access key cost limit exceeded.",
 	}
+	reasonInsufficientBalance = reason{
+		Status:  http.StatusPaymentRequired,
+		Code:    "insufficient_balance",
+		Message: "Account balance is exhausted.",
+	}
 	reasonConfigurationChanged = reason{
 		Status:  http.StatusServiceUnavailable,
 		Code:    "configuration_changed",

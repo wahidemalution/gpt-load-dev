@@ -104,10 +104,15 @@ func (handler *Handler) authenticateDataPlaneRequest(ginContext *gin.Context) {
 		snapshot,
 		handler.encryption,
 		requestContext.requestStarted,
+		handler.balanceGate,
 	)
 	if !authenticated {
 		handler.logDataPlaneAuthFailed(ginContext.Request, accessKey.ID, failureReason)
-		_ = handler.writeReason(ginContext, reasonInvalidAccessKey)
+		responseReason := reasonInvalidAccessKey
+		if failureReason == accessKeyAuthFailureNoBalance {
+			responseReason = reasonInsufficientBalance
+		}
+		_ = handler.writeReason(ginContext, responseReason)
 		ginContext.Abort()
 		return
 	}

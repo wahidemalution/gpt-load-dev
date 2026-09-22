@@ -81,6 +81,7 @@ type AccessKeyConfig struct {
 	KeyPrefix        string
 	PriceMultiplier  *pricing.PriceMultiplier
 	ID               uint
+	UserID           uint
 	Name             string
 	KeyHash          string
 	KeySuffix        string
@@ -178,6 +179,7 @@ type AccessKeyView struct {
 	KeyPrefix        string
 	PriceMultiplier  pricing.PriceMultiplier
 	ID               uint
+	UserID           uint
 	Name             string
 	KeySuffix        string
 	Status           AccessKeyStatus
@@ -343,7 +345,7 @@ func newAccessKeyView(input AccessKeyConfig) AccessKeyView {
 	})
 	return AccessKeyView{
 		PriceMultiplier: resolvePriceMultiplier(input.PriceMultiplier),
-		ID:              input.ID, Name: input.Name, Status: input.Status,
+		ID:              input.ID, UserID: input.UserID, Name: input.Name, Status: input.Status,
 		KeySuffix:        input.KeySuffix,
 		KeyPrefix:        input.KeyPrefix,
 		Filters:          cloneFilterSet(input.Filters),

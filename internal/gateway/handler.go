@@ -87,6 +87,12 @@ type runtimeCredentialRegistry interface {
 	ClearFailure(credentialID uint) bool
 }
 
+// AccessKeyBalanceGate hard-blocks data-plane auth for keys whose owner has
+// no balance. Narrow data-plane view; the container binds the userdash gate.
+type AccessKeyBalanceGate interface {
+	Allow(accessKeyOwnerID uint) bool
+}
+
 type Handler struct {
 	autoTasks           autoTaskCache
 	decisionClient      autoDecisionRunner
@@ -104,6 +110,7 @@ type Handler struct {
 	requestLogSink      telemetry.RequestLogSink
 	priceTables         PriceTableProvider
 	accessQuota         *accessquota.Runtime
+	balanceGate         AccessKeyBalanceGate
 	newRequestID        func() (string, error)
 	requestNow          func() time.Time
 	now                 func() time.Time
@@ -143,6 +150,15 @@ func (handler *Handler) freezeAttemptPricing(
 		frozen.table = handler.priceTables.Load()
 	}
 	return frozen
+}
+
+// SetBalanceGate installs the zero-balance hard-block gate checked during
+// data-plane authentication. Nil-tolerant: nil disables the balance check.
+func (handler *Handler) SetBalanceGate(gate AccessKeyBalanceGate) {
+	if handler == nil {
+		return
+	}
+	handler.balanceGate = gate
 }
 
 func NewHandler(
