@@ -43,7 +43,9 @@ export function createModernRouter(
                       ? () => import('./features/usage/UsageView.vue')
                       : item.id === 'health'
                         ? () => import('./features/health/HealthView.vue')
-                        : () => import('./features/models/ModelsView.vue'),
+                        : item.id === 'users'
+                          ? () => import('./features/users/UsersView.vue')
+                          : () => import('./features/models/ModelsView.vue'),
         meta: { requiresAuth: true, adminOnly: item.adminOnly },
       })),
       {
@@ -152,16 +154,15 @@ export function createModernRouter(
         meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
       },
       {
-        path: pagePath('admin-users'),
-        name: 'modern-admin-users',
-        component: () => import('./features/users/UsersView.vue'),
-        meta: { requiresAuth: true, adminOnly: true },
-      },
-      {
         path: pagePath('admin-user-detail'),
         name: 'modern-admin-user-detail',
         component: () => import('./features/users/UserDetailView.vue'),
-        meta: { requiresAuth: true, adminOnly: true },
+        meta: {
+          primaryNav: 'modern-admin-users',
+          titleKey: 'pages.userDetail.title',
+          requiresAuth: true,
+          adminOnly: true,
+        },
       },
       {
         // ponytail: halaman 404 publik; URL random tidak lagi dialihkan ke login

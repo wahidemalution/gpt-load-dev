@@ -7,6 +7,7 @@ import {
   Layers2,
   ScrollText,
   Settings2,
+  Users,
 } from '@lucide/vue'
 
 import modernPageRoutes from '../../../../../internal/webui/modern_page_routes.json'
@@ -54,6 +55,14 @@ export const navigationItems = [
     adminOnly: true,
   },
   {
+    id: 'users',
+    name: 'modern-admin-users',
+    path: pagePath('admin-users'),
+    section: 'users',
+    icon: Users,
+    adminOnly: true,
+  },
+  {
     id: 'logs',
     name: 'modern-logs',
     path: pagePath('monitor-logs'),
@@ -90,7 +99,7 @@ export const navigationItems = [
 export type NavigationItem = (typeof navigationItems)[number]
 export type WorkspaceID = NavigationItem['id']
 
-export const navigationSections = ['workspace', 'observe', 'system'] as const
+export const navigationSections = ['workspace', 'users', 'observe', 'system'] as const
 
 export function findNavigationItem(
   name: string | symbol | null | undefined,
