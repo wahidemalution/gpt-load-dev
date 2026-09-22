@@ -32,8 +32,10 @@ func TestServerServesSameIndexForExplicitPageRoutes(t *testing.T) {
 
 	var firstBody string
 	for _, target := range []string{
-		"/", "/login", "/import", "/groups/42", "/access-keys", "/monitor?tab=logs", "/models", "/settings",
+		"/", "/dashboard", "/login", "/import", "/groups/42", "/access-keys", "/monitor?tab=logs", "/models", "/settings",
 		"/monitor/usage", "/monitor/logs", "/monitor/health", "/monitor/inspector",
+		"/clientarea", "/clientarea/dashboard", "/clientarea/keys", "/clientarea/usage", "/clientarea/models",
+		"/users", "/users/42",
 	} {
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))

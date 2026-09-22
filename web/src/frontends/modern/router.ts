@@ -2,7 +2,6 @@ import { dateRangePresets } from './components/ui/date-time'
 import { createRouter, createWebHistory, type RouterHistory } from 'vue-router'
 
 import { navigationItems, pagePath } from './app/navigation'
-import { loginLocation } from './app/redirect'
 import type { AuthSession } from './features/auth/auth-session'
 
 export function createModernRouter(
@@ -14,6 +13,18 @@ export function createModernRouter(
     sensitive: true,
     strict: true,
     routes: [
+      {
+        path: pagePath('landing'),
+        name: 'modern-landing',
+        component: () => import('./features/landing/LandingView.vue'),
+        meta: { titleKey: 'landing.title' },
+      },
+      {
+        path: pagePath('model-list'),
+        name: 'modern-model-list',
+        component: () => import('./features/landing/ModelsListView.vue'),
+        meta: { titleKey: 'landing.title', publicLayout: 'landing' },
+      },
       ...navigationItems.map((item) => ({
         path: item.path,
         name: item.name,
@@ -83,10 +94,81 @@ export function createModernRouter(
         meta: { titleKey: 'auth.title' },
       },
       {
+        path: pagePath('clientarea-auth'),
+        name: 'modern-clientarea-home',
+        component: () => import('./features/clientarea/ClientAreaAuthView.vue'),
+        meta: { titleKey: 'clientarea.auth.title', publicLayout: 'clientarea' },
+      },
+      {
+        path: pagePath('clientarea-dashboard'),
+        name: 'modern-clientarea-dashboard',
+        component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        children: [
+          {
+            path: '',
+            name: 'modern-clientarea-dashboard-child',
+            component: () => import('./features/clientarea/DashboardView.vue'),
+          },
+        ],
+        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+      },
+      {
+        path: pagePath('clientarea-keys'),
+        name: 'modern-clientarea-keys',
+        component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        children: [
+          {
+            path: '',
+            name: 'modern-clientarea-keys-child',
+            component: () => import('./features/clientarea/KeysView.vue'),
+          },
+        ],
+        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+      },
+      {
+        path: pagePath('clientarea-usage'),
+        name: 'modern-clientarea-usage',
+        component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        children: [
+          {
+            path: '',
+            name: 'modern-clientarea-usage-child',
+            component: () => import('./features/clientarea/UsageView.vue'),
+          },
+        ],
+        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+      },
+      {
+        path: pagePath('clientarea-models'),
+        name: 'modern-clientarea-models',
+        component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        children: [
+          {
+            path: '',
+            name: 'modern-clientarea-models-child',
+            component: () => import('./features/clientarea/ModelsView.vue'),
+          },
+        ],
+        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+      },
+      {
+        path: pagePath('admin-users'),
+        name: 'modern-admin-users',
+        component: () => import('./features/users/UsersView.vue'),
+        meta: { requiresAuth: true, adminOnly: true },
+      },
+      {
+        path: pagePath('admin-user-detail'),
+        name: 'modern-admin-user-detail',
+        component: () => import('./features/users/UserDetailView.vue'),
+        meta: { requiresAuth: true, adminOnly: true },
+      },
+      {
+        // ponytail: halaman 404 publik; URL random tidak lagi dialihkan ke login
         path: '/:pathMatch(.*)*',
         name: 'modern-unavailable',
         component: () => import('./features/home/UnavailableView.vue'),
-        meta: { requiresAuth: true },
+        meta: { titleKey: 'notFound.title', publicLayout: 'landing' },
       },
     ],
     scrollBehavior(to, from, savedPosition) {
@@ -96,8 +178,13 @@ export function createModernRouter(
     },
   })
   router.beforeEach((to) => {
+    // Client-area pages gate inline in the shell (no admin login redirect);
+    // without a user session we let navigation proceed like requiresAuth does.
+    if (to.meta.requiresUserAuth) return true
     if (!to.meta.requiresAuth) return true
-    if (!session.hasCredential()) return loginLocation(to.fullPath)
+    // ponytail: tanpa kredensial biarkan lanjut — AuthGate me-render 404 di
+    // tempat sehingga path dashboard tidak bocor lewat redirect /login
+    if (!session.hasCredential()) return true
     if (to.meta.adminOnly && session.getPrincipalType() === 'access_key') {
       return { name: 'modern-home' }
     }

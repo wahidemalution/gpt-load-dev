@@ -1,6 +1,7 @@
 import { protocolMessages as protocols } from '../protocols'
 import { enUS as inspector } from './inspector'
 import { enUS as home } from './home'
+import { enUS as landing } from './landing'
 import { enUS as accessKeys } from './access-keys'
 import { enUS as logs } from './logs'
 import { enUS as usage } from './usage'
@@ -20,6 +21,7 @@ import { enUS as subscriptions } from './subscriptions'
 
 export default {
   home,
+  landing,
   inspector,
   protocols,
   logs,
@@ -111,6 +113,19 @@ export default {
     settings: { title: 'Global settings' },
     import: { title: 'Import credentials' },
     login: { title: 'Sign in' },
+  },
+  clientarea: {
+    auth: {
+      title: 'Client area',
+      description: 'Sign in or create an account to manage your API keys and usage.',
+      email: 'Email',
+      password: 'Password',
+      login: 'Sign in',
+      signup: 'Create account',
+      switchToSignup: 'No account yet? Create one',
+      switchToLogin: 'Already have an account? Sign in',
+      failed: 'Authentication failed. Check your credentials and try again.',
+    },
   },
   notFound: {
     title: 'Page not found',

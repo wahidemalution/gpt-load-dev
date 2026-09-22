@@ -1,6 +1,7 @@
 import { protocolMessages as protocols } from '../protocols'
 import { jaJP as inspector } from './inspector'
 import { jaJP as home } from './home'
+import { jaJP as landing } from './landing'
 import { jaJP as accessKeys } from './access-keys'
 import { jaJP as logs } from './logs'
 import { jaJP as usage } from './usage'
@@ -20,6 +21,7 @@ import { jaJP as subscriptions } from './subscriptions'
 
 export default {
   home,
+  landing,
   inspector,
   protocols,
   logs,
@@ -110,6 +112,19 @@ export default {
     settings: { title: 'グローバル設定' },
     import: { title: '認証情報のインポート' },
     login: { title: 'ログイン' },
+  },
+  clientarea: {
+    auth: {
+      title: 'クライアントエリア',
+      description: 'ログインまたは登録して、API キーと使用量を管理できます。',
+      email: 'メールアドレス',
+      password: 'パスワード',
+      login: 'ログイン',
+      signup: 'アカウント作成',
+      switchToSignup: 'アカウントをお持ちでない方は作成',
+      switchToLogin: 'アカウントをお持ちですか？ログイン',
+      failed: '認証に失敗しました。認証情報を確認して再試行してください。',
+    },
   },
   notFound: {
     title: 'ページが見つかりません',

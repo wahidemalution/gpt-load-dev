@@ -1,9 +1,17 @@
 {
   "version": 1,
   "routes": [
+    { "name": "model-list", "path": "/model" },
     { "name": "monitor-usage", "path": "/monitor/usage" },
     { "name": "monitor-logs", "path": "/monitor/logs" },
     { "name": "monitor-health", "path": "/monitor/health" },
-    { "name": "monitor-inspector", "path": "/monitor/inspector" }
+    { "name": "monitor-inspector", "path": "/monitor/inspector" },
+    { "name": "clientarea-auth", "path": "/clientarea" },
+    { "name": "clientarea-dashboard", "path": "/clientarea/dashboard" },
+    { "name": "clientarea-keys", "path": "/clientarea/keys" },
+    { "name": "clientarea-usage", "path": "/clientarea/usage" },
+    { "name": "clientarea-models", "path": "/clientarea/models" },
+    { "name": "admin-users", "path": "/users" },
+    { "name": "admin-user-detail", "path": "/users/:id" }
   ]
 }

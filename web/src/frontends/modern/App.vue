@@ -14,6 +14,7 @@ import AuthGate from './features/auth/AuthGate.vue'
 import AppLayout from './layouts/AppLayout.vue'
 import LandingLayout from './layouts/LandingLayout.vue'
 import PublicLayout from './layouts/PublicLayout.vue'
+import ClientAreaPublicLayout from './features/clientarea/ClientAreaPublicLayout.vue'
 
 const { locale } = useI18n()
 const messages = provideMessages()
@@ -43,9 +44,18 @@ watch(
       <AuthGate v-if="currentRoute.meta.requiresAuth">
         <AppLayout><component :is="Component" /></AppLayout>
       </AuthGate>
-      <LandingLayout v-else-if="currentRoute.name === 'modern-landing'">
+      <LandingLayout
+        v-else-if="
+          currentRoute.name === 'modern-landing' || currentRoute.meta.publicLayout === 'landing'
+        "
+      >
         <component :is="Component" />
       </LandingLayout>
+      <ClientAreaPublicLayout
+        v-else-if="currentRoute.meta.publicLayout === 'clientarea'"
+      >
+        <component :is="Component" />
+      </ClientAreaPublicLayout>
       <PublicLayout v-else><component :is="Component" /></PublicLayout>
     </RouterView>
   </TooltipProvider>

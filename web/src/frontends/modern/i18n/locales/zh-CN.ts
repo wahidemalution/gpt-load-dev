@@ -1,6 +1,7 @@
 import { protocolMessages as protocols } from '../protocols'
 import { zhCN as inspector } from './inspector'
 import { zhCN as home } from './home'
+import { zhCN as landing } from './landing'
 import { zhCN as accessKeys } from './access-keys'
 import { zhCN as logs } from './logs'
 import { zhCN as usage } from './usage'
@@ -20,6 +21,7 @@ import { zhCN as subscriptions } from './subscriptions'
 
 export default {
   home,
+  landing,
   inspector,
   protocols,
   logs,
@@ -107,6 +109,19 @@ export default {
     settings: { title: '全局设置' },
     import: { title: '导入凭据' },
     login: { title: '登录' },
+  },
+  clientarea: {
+    auth: {
+      title: '客户区',
+      description: '登录或注册账户，管理您的 API 密钥和用量。',
+      email: '邮箱',
+      password: '密码',
+      login: '登录',
+      signup: '注册账户',
+      switchToSignup: '还没有账户？立即注册',
+      switchToLogin: '已有账户？直接登录',
+      failed: '认证失败，请检查凭据后重试。',
+    },
   },
   notFound: {
     title: '页面不存在',
