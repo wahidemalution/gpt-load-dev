@@ -112,7 +112,11 @@ export function createModernRouter(
             component: () => import('./features/clientarea/DashboardView.vue'),
           },
         ],
-        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+        meta: {
+          titleKey: 'clientarea.nav.overview',
+          requiresUserAuth: true,
+          publicLayout: 'clientarea',
+        },
       },
       {
         path: pagePath('clientarea-keys'),
@@ -125,7 +129,7 @@ export function createModernRouter(
             component: () => import('./features/clientarea/KeysView.vue'),
           },
         ],
-        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+        meta: { titleKey: 'clientarea.nav.keys', requiresUserAuth: true, publicLayout: 'clientarea' },
       },
       {
         path: pagePath('clientarea-usage'),
@@ -138,7 +142,11 @@ export function createModernRouter(
             component: () => import('./features/clientarea/UsageView.vue'),
           },
         ],
-        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+        meta: {
+          titleKey: 'clientarea.nav.usage',
+          requiresUserAuth: true,
+          publicLayout: 'clientarea',
+        },
       },
       {
         path: pagePath('clientarea-models'),
@@ -151,7 +159,11 @@ export function createModernRouter(
             component: () => import('./features/clientarea/ModelsView.vue'),
           },
         ],
-        meta: { requiresUserAuth: true, publicLayout: 'clientarea' },
+        meta: {
+          titleKey: 'clientarea.nav.models',
+          requiresUserAuth: true,
+          publicLayout: 'clientarea',
+        },
       },
       {
         path: pagePath('admin-user-detail'),
