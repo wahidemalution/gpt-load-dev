@@ -64,7 +64,12 @@ async function refresh(): Promise<void> {
 }
 
 provideClientAreaShell({ profile, refresh })
-onMounted(refresh)
+onMounted(() => {
+  // Drop an expired token up front so the shell renders its 404 instead of
+  // firing a request that is guaranteed to 401.
+  if (session.hasSession() && session.isExpired()) session.clear()
+  void refresh()
+})
 onScopeDispose(() => controller?.abort())
 watch(() => route.fullPath, refresh)
 watch(anonymous, (isAnonymous) => {

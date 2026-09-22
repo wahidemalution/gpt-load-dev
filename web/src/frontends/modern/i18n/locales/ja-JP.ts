@@ -199,6 +199,11 @@ export default {
       description: '利用可能なモデルとコンテキストウィンドウ、トークン単価です。',
       loadFailed: 'モデル一覧を読み込めません',
       empty: '利用可能なモデルはまだありません',
+      context: '{value} トークン',
+      input: '入力',
+      output: '出力',
+      cacheRead: 'キャッシュ読み取り',
+      cacheWrite: 'キャッシュ書き込み',
     },
   },
   users: {

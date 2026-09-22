@@ -32,7 +32,12 @@ const tabs = computed(() => [
 ])
 
 onMounted(() => {
-  if (session.hasSession()) void router.replace({ name: 'modern-clientarea-dashboard' })
+  if (session.hasSession() && !session.isExpired()) {
+    void router.replace({ name: 'modern-clientarea-dashboard' })
+    return
+  }
+  // An expired token would only bounce off the dashboard's 401; drop it here.
+  if (session.hasSession()) session.clear()
 })
 
 function switchMode(value: string): void {
@@ -124,11 +129,16 @@ async function submit(): Promise<void> {
           {{ t(mode === 'signup' ? 'clientarea.auth.signup' : 'clientarea.auth.login') }}
         </AppButton>
       </form>
-      <p class="modern-clientarea-auth-switch">
+      <AppButton
+        class="modern-clientarea-auth-switch"
+        variant="text"
+        size="sm"
+        @click="switchMode(mode === 'signup' ? 'login' : 'signup')"
+      >
         {{
           t(mode === 'signup' ? 'clientarea.auth.switchToLogin' : 'clientarea.auth.switchToSignup')
         }}
-      </p>
+      </AppButton>
     </AuthCard>
   </div>
 </template>
@@ -148,8 +158,6 @@ async function submit(): Promise<void> {
   width: 100%;
 }
 .modern-clientarea-auth-switch {
-  color: var(--modern-muted);
-  font-size: var(--modern-font-size-small);
-  text-align: center;
+  align-self: center;
 }
 </style>

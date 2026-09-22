@@ -200,6 +200,11 @@ export default {
       description: 'Available models with context window and per-token pricing.',
       loadFailed: 'Unable to load the model list',
       empty: 'No models available yet',
+      context: '{value} tokens',
+      input: 'Input',
+      output: 'Output',
+      cacheRead: 'Cache Read',
+      cacheWrite: 'Cache Write',
     },
   },
   users: {

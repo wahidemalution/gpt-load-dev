@@ -196,6 +196,11 @@ export default {
       description: '可用模型及其上下文窗口和按 token 计费价格。',
       loadFailed: '无法加载模型列表',
       empty: '暂无可用模型',
+      context: '{value} tokens',
+      input: '输入',
+      output: '输出',
+      cacheRead: '缓存读取',
+      cacheWrite: '缓存写入',
     },
   },
   users: {
