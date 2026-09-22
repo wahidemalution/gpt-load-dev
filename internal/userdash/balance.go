@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"gorm.io/gorm"
 
@@ -19,33 +20,39 @@ type AccessKeyCost struct {
 }
 
 // AdjustBalance applies a manual ledger delta and the matching balance update
-// in one transaction. Deltas come from admin input, so overflow is checked
-// before any row is touched.
+// in one transaction. The overflow guard runs inside the transaction as a
+// SQL-level WHERE clause so concurrent adjustments cannot both pass a stale
+// application-side check (TOCTOU) and wrap inside the database.
 func (s *Service) AdjustBalance(ctx context.Context, userID uint, deltaNanoUSD int64, reason, adminNote, createdByAdmin string) (Profile, error) {
-	current, err := s.GetBalance(ctx, userID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return Profile{}, gorm.ErrRecordNotFound
-		}
-		return Profile{}, err
-	}
-	// Checked add: deltas come from admin input and must not wrap int64.
-	// pricing.CheckedAddNanoUSD only covers non-negative operands, so do the
-	// wrap check here for arbitrary signs.
-	sum := current + deltaNanoUSD
-	if (deltaNanoUSD > 0 && sum < current) || (deltaNanoUSD < 0 && sum > current) {
-		return Profile{}, ErrBalanceOverflow
+	if deltaNanoUSD == 0 {
+		return Profile{}, fmt.Errorf("%w: zero-delta adjustment", ErrValidation)
 	}
 
 	var profile Profile
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Sign-aware atomic guarded update: positive deltas cannot push the
+		// balance past MaxInt64; negative deltas cannot underflow past
+		// MinInt64. RowsAffected == 0 means the user is unknown OR the guard
+		// rejected the delta; distinguish by an explicit existence probe.
 		result := tx.Model(&models.User{}).Where("id = ?", userID).
+			Where(
+				"(? >= 0 AND balance_nano_usd <= ?) OR (? < 0 AND balance_nano_usd >= ?)",
+				deltaNanoUSD, math.MaxInt64-deltaNanoUSD,
+				deltaNanoUSD, math.MinInt64-deltaNanoUSD,
+			).
 			Update("balance_nano_usd", gorm.Expr("balance_nano_usd + ?", deltaNanoUSD))
 		if result.Error != nil {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
+			var exists int64
+			if err := tx.Model(&models.User{}).Where("id = ?", userID).Count(&exists).Error; err != nil {
+				return err
+			}
+			if exists == 0 {
+				return gorm.ErrRecordNotFound
+			}
+			return ErrBalanceOverflow
 		}
 		row := models.UserBalanceAdjustment{
 			UserID: userID, DeltaNanoUSD: deltaNanoUSD, Reason: reason,
@@ -69,6 +76,9 @@ func (s *Service) AdjustBalance(ctx context.Context, userID uint, deltaNanoUSD i
 func (s *Service) ListAdjustments(ctx context.Context, userID uint, limit, offset int) ([]models.UserBalanceAdjustment, error) {
 	if limit <= 0 {
 		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	rows := make([]models.UserBalanceAdjustment, 0, limit)
 	err := s.db.WithContext(ctx).

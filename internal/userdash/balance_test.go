@@ -149,6 +149,60 @@ func TestBalanceAdjustOverflowRejected(t *testing.T) {
 	}
 }
 
+func TestBalanceAdjustZeroDeltaRejected(t *testing.T) {
+	env := newTestEnv(t)
+	userID, _ := seedBalanceUser(t, env)
+
+	if _, err := env.service.AdjustBalance(context.Background(), userID, 0, "noop", "", "admin"); !errors.Is(err, ErrValidation) {
+		t.Fatalf("AdjustBalance(0) error = %v, want ErrValidation", err)
+	}
+	var count int64
+	env.db.Model(&models.UserBalanceAdjustment{}).Where("user_id = ?", userID).Count(&count)
+	if count != 0 {
+		t.Fatalf("ledger rows = %d, want 0 for zero-delta adjustment", count)
+	}
+}
+
+func TestBalanceConcurrentOverflowGuard(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	userID, _ := seedBalanceUser(t, env)
+
+	// Two concurrent deltas of MaxInt64/2+1 would wrap when summed; only one
+	// must land. The SQL-level guard serializes this without a stale read.
+	const step = math.MaxInt64/2 + 1
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	overflows := 0
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := env.service.AdjustBalance(ctx, userID, step, "topup", "", "admin")
+			if errors.Is(err, ErrBalanceOverflow) {
+				mu.Lock()
+				overflows++
+				mu.Unlock()
+				return
+			}
+			if err != nil {
+				t.Errorf("AdjustBalance() error = %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if overflows != 2 {
+		t.Errorf("overflow rejections = %d, want 2", overflows)
+	}
+	if got, _ := env.service.GetBalance(ctx, userID); got != step {
+		t.Fatalf("balance = %d, want %d", got, step)
+	}
+	if err := ReconcileBalance(ctx, env.db, userID); err != nil {
+		t.Fatalf("ReconcileBalance() error = %v", err)
+	}
+}
+
 func TestBalanceConcurrentAdjust(t *testing.T) {
 	env := newTestEnv(t)
 	ctx := context.Background()
