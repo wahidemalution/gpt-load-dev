@@ -65,6 +65,11 @@ type AccessKeyRPMLimiter interface {
 	Allow(accessKeyID uint, limit int64) ratelimit.LimitDecision
 }
 
+// AccessKeyConcurrencyLimiter bounds simultaneous in-flight requests per key.
+type AccessKeyConcurrencyLimiter interface {
+	Acquire(accessKeyID uint, limit int64) (release func(), allowed bool)
+}
+
 // PriceTableProvider exposes the currently published immutable price table.
 type PriceTableProvider interface {
 	Load() *pricing.Table
@@ -107,6 +112,7 @@ type Handler struct {
 	stats               *health.StatsStore
 	mutations           credentialMutationCoordinator
 	limiter             AccessKeyRPMLimiter
+	concurrency         AccessKeyConcurrencyLimiter
 	requestLogSink      telemetry.RequestLogSink
 	priceTables         PriceTableProvider
 	accessQuota         *accessquota.Runtime
@@ -159,6 +165,15 @@ func (handler *Handler) SetBalanceGate(gate AccessKeyBalanceGate) {
 		return
 	}
 	handler.balanceGate = gate
+}
+
+// SetConcurrencyLimiter installs the per-key in-flight request limiter.
+// Nil-tolerant: nil (or an absent limiter) disables concurrency enforcement.
+func (handler *Handler) SetConcurrencyLimiter(limiter AccessKeyConcurrencyLimiter) {
+	if handler == nil {
+		return
+	}
+	handler.concurrency = limiter
 }
 
 func NewHandler(
@@ -518,6 +533,21 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 		)
 		handler.completeReason(ginContext, recorder, reasonAccessKeyRateLimited)
 		return
+	}
+	var releaseConcurrency func()
+	if handler.concurrency != nil {
+		release, allowed := handler.concurrency.Acquire(accessKey.ID, accessKey.MaxConcurrent)
+		if !allowed {
+			ginContext.Writer.Header().Set("Retry-After", "1")
+			handler.completeReason(ginContext, recorder, reasonAccessKeyConcurrentLimited)
+			return
+		}
+		if release != nil {
+			releaseConcurrency = release
+		}
+	}
+	if releaseConcurrency != nil {
+		defer releaseConcurrency()
 	}
 	if selectedRoute.Kind == endpointModels {
 		if !contentcoding.IdentityAcceptable(

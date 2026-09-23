@@ -162,6 +162,17 @@ func (s *websocketConnection) executeTurn(turn websocketTurn) {
 		reject(reasonAccessKeyRateLimited)
 		return
 	}
+	// executeTurn's own scope ends exactly when the turn completes (all returns
+	// below finish the turn), so a deferred release holds the slot for the whole
+	// turn and frees it on every exit path.
+	if h.concurrency != nil {
+		release, allowed := h.concurrency.Acquire(key.ID, key.MaxConcurrent)
+		if !allowed {
+			reject(reasonAccessKeyConcurrentLimited)
+			return
+		}
+		defer release()
+	}
 	original, err := inspectWebsocketRequest(turn.body)
 	if err != nil {
 		reject(reasonInvalidProtocolRequest)

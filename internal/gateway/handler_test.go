@@ -5313,7 +5313,7 @@ func newHandlerForTestWithStats(
 		Credentials: credentialConfigs,
 		AccessKeys: []state.AccessKeyConfig{{
 			ID: 1, Name: "client", KeyHash: keyService.Hash("gl-client"),
-			Status: state.AccessKeyStatusActive,
+			Status: state.AccessKeyStatusActive, MaxConcurrent: 1,
 		}},
 	}); err != nil {
 		t.Fatalf("Publish() error = %v", err)

@@ -802,6 +802,7 @@ func mapAccessKeys(
 			PriceMultiplier: &multiplier,
 			ID:              row.ID, UserID: derefUserID(row.UserID), Name: row.Name, KeyHash: row.KeyHash, KeyPrefix: *row.KeyPrefix, KeySuffix: row.KeySuffix,
 			Status: state.AccessKeyStatus(row.Status), Filters: filters.toState(), RPMLimit: row.RPMLimit,
+			MaxConcurrent: row.MaxConcurrent,
 			ExpiresAtMS: cloneInt64Pointer(row.ExpiresAtMS), AllowedPeerCIDRs: allowedPeerCIDRs,
 			CostLimitRules: append([]accessquota.Rule(nil), rulesByAccessKey[row.ID]...),
 		})

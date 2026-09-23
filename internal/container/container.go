@@ -79,6 +79,7 @@ func BuildContainer() (*dig.Container, error) {
 		func(limiter *ratelimit.AccessKeyRPM) gateway.AccessKeyRPMLimiter {
 			return limiter
 		},
+		ratelimit.NewAccessKeyConcurrency,
 		func(manager *state.Manager) requestlog.RetentionPolicyProvider {
 			return retentionSnapshotProvider{manager: manager}
 		},
@@ -241,8 +242,10 @@ func BuildContainer() (*dig.Container, error) {
 		registry *httproute.Registry,
 		gatewayHandler *gateway.Handler,
 		balanceGate *userdash.BalanceGate,
+		concurrency *ratelimit.AccessKeyConcurrency,
 	) error {
 		gatewayHandler.SetBalanceGate(balanceGate)
+		gatewayHandler.SetConcurrencyLimiter(concurrency)
 		engine.Use(gatewayHandler.DownstreamHeadersMiddleware())
 		return registry.Bind(engine)
 	}); err != nil {

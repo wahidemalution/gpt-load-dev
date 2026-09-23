@@ -68,6 +68,11 @@ var (
 		Code:    "access_key_cost_limit_exceeded",
 		Message: "Access key cost limit exceeded.",
 	}
+	reasonAccessKeyConcurrentLimited = reason{
+		Status:  http.StatusTooManyRequests,
+		Code:    "access_key_concurrent_limit_exceeded",
+		Message: "Concurrent request limit exceeded for this API key. Retry shortly.",
+	}
 	reasonInsufficientBalance = reason{
 		Status:  http.StatusPaymentRequired,
 		Code:    "insufficient_balance",
