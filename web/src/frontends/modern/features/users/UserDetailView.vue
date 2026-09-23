@@ -12,6 +12,7 @@ import {
   listAdjustments,
   updateUser,
   type AdminUserDetail,
+  type AdminUserKeyView,
 } from '@modern/api/admin-users'
 import { formatNanoUSD } from '@modern/app/format'
 import { useMessages } from '@modern/app/messages'
@@ -33,6 +34,8 @@ import {
 } from '@modern/components/ui'
 import { dateFormatter } from '@modern/components/ui/intl-formatters'
 import { useApiClient } from '@shared/http/client-context'
+
+import AdminKeyLimitsDialog from './AdminKeyLimitsDialog.vue'
 
 const { t, locale } = useI18n()
 const client = useApiClient()
@@ -113,6 +116,18 @@ async function confirmStatus(): Promise<void> {
   } finally {
     statusPending.value = false
   }
+}
+
+const limitsOpen = ref(false)
+const limitsTarget = ref<AdminUserKeyView | null>(null)
+function openLimits(key: AdminUserKeyView): void {
+  limitsTarget.value = key
+  limitsOpen.value = true
+}
+async function limitsSaved(): Promise<void> {
+  await query.refetch()
+  void cache.invalidateQueries({ queryKey: ['modern', 'admin-user', id.value] })
+  messages.show({ text: t('users.detail.limitsSaved'), tone: 'success' })
 }
 
 const topupOpen = ref(false)
@@ -270,6 +285,11 @@ onScopeDispose(() => controller.abort())
                 <th scope="col">{{ t('users.detail.keyName') }}</th>
                 <th scope="col">{{ t('users.detail.key') }}</th>
                 <th scope="col">{{ t('users.detail.keyStatus') }}</th>
+                <th scope="col">{{ t('users.detail.keyRpm') }}</th>
+                <th scope="col">{{ t('users.detail.keyConcurrent') }}</th>
+                <th scope="col">{{ t('users.detail.keyCredit') }}</th>
+                <th scope="col">{{ t('users.detail.keyModels') }}</th>
+                <th scope="col">{{ t('accessKeys.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -280,6 +300,23 @@ onScopeDispose(() => controller.abort())
                   <AppBadge :tone="key.status === 'active' ? 'success' : 'neutral'" size="xs">{{
                     t('users.statuses.' + key.status)
                   }}</AppBadge>
+                </td>
+                <td class="modern-user-number">{{ key.rpm_limit || '—' }}</td>
+                <td class="modern-user-number">{{ key.max_concurrent || '—' }}</td>
+                <td class="modern-user-number">
+                  {{
+                    key.credit_limit_nano_usd > 0
+                      ? formatNanoUSD(key.credit_limit_nano_usd, locale)
+                      : '—'
+                  }}
+                </td>
+                <td>
+                  {{ key.models.length ? key.models.join(', ') : '—' }}
+                </td>
+                <td>
+                  <AppButton size="xs" variant="ghost" @click="openLimits(key)">{{
+                    t('users.detail.editLimits')
+                  }}</AppButton>
                 </td>
               </tr>
             </tbody>
@@ -397,6 +434,8 @@ onScopeDispose(() => controller.abort())
         </form>
       </AppDialogContent>
     </DialogRoot>
+
+    <AdminKeyLimitsDialog v-model:open="limitsOpen" :owned-key="limitsTarget" @saved="limitsSaved" />
   </div>
 </template>
 

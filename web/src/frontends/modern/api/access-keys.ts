@@ -33,6 +33,7 @@ export interface AccessKey {
   filters: AccessScope
   expires_at_ms: number | null
   rpm_limit: number
+  max_concurrent: number
   price_multiplier: string
   cost_limit_rules: CostRule[]
   cost_limit_status: {
@@ -72,6 +73,7 @@ export interface AccessInput {
   filters: AccessScope
   expires_at_ms: number | null
   rpm_limit: number
+  max_concurrent?: number
   price_multiplier: string
   cost_limit_rules: CostRule[]
 }
@@ -122,6 +124,7 @@ function readAccessKey(value: unknown): AccessKey {
     },
     expires_at_ms: timestamp(row.expires_at_ms),
     rpm_limit: integer(row.rpm_limit),
+    max_concurrent: integer(row.max_concurrent),
     price_multiplier: decimal(row.price_multiplier),
     cost_limit_rules: list(row.cost_limit_rules).map(readRule),
     cost_limit_status: runtime

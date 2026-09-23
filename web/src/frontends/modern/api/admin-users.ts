@@ -19,6 +19,11 @@ export interface AdminUserKeyView {
   key_prefix: string
   key_suffix: string
   status: string
+  rpm_limit: number
+  max_concurrent: number
+  credit_limit_nano_usd: number
+  models: string[]
+  usage_total_nano_usd: number
 }
 
 export interface AdminUserDetail extends AdminUserView {
@@ -100,6 +105,11 @@ function readAdminUserKey(value: unknown): AdminUserKeyView {
     key_prefix: text(row.key_prefix),
     key_suffix: text(row.key_suffix),
     status: text(row.status),
+    rpm_limit: integer(row.rpm_limit),
+    max_concurrent: integer(row.max_concurrent),
+    credit_limit_nano_usd: integer(row.credit_limit_nano_usd),
+    models: list(row.models).map((model) => text(model)),
+    usage_total_nano_usd: integer(row.usage_total_nano_usd),
   }
 }
 
