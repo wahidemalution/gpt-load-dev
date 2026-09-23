@@ -29,8 +29,18 @@ export interface OwnedKeyView {
   status: string
   created_at_ms: number
   last_request_at_ms: number | null
-  usage_30d_nano_usd: number
-  request_count_30d: number
+  rpm_limit: number
+  max_concurrent: number
+  credit_limit_nano_usd: number
+  models: string[]
+  usage_total_nano_usd: number
+}
+
+export interface KeyLimitsInput {
+  rpm_limit?: number
+  max_concurrent?: number
+  credit_limit_nano_usd?: number
+  models?: string[]
 }
 
 export interface ClientAreaModel {
@@ -79,8 +89,11 @@ function readOwnedKey(value: unknown): OwnedKeyView {
       row.last_request_at_ms === null || row.last_request_at_ms === undefined
         ? null
         : integer(row.last_request_at_ms),
-    usage_30d_nano_usd: integer(row.usage_30d_nano_usd),
-    request_count_30d: integer(row.request_count_30d),
+    rpm_limit: integer(row.rpm_limit),
+    max_concurrent: integer(row.max_concurrent),
+    credit_limit_nano_usd: integer(row.credit_limit_nano_usd),
+    models: list(row.models).map((value) => text(value)),
+    usage_total_nano_usd: integer(row.usage_total_nano_usd),
   }
 }
 
@@ -231,6 +244,44 @@ export async function deleteKey(
     })
   } catch (error) {
     // 服务端契约是 200 空响应体；envelope 解析器对空响应体抛错，2xx 即删除成功。
+    if (error instanceof InvalidResponseError) return
+    throw error
+  }
+}
+
+export async function updateKeyLimits(
+  client: ApiClient,
+  id: number,
+  input: KeyLimitsInput,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await client.request(`/api/clientarea/keys/${id}/limits`, {
+      method: 'PATCH',
+      json: input,
+      ...(signal ? { signal } : {}),
+    })
+  } catch (error) {
+    // 服务端契约是 200 空响应体；envelope 解析器对空响应体抛错，2xx 即更新成功。
+    if (error instanceof InvalidResponseError) return
+    throw error
+  }
+}
+
+export async function updateKeyStatus(
+  client: ApiClient,
+  id: number,
+  status: 'active' | 'disabled',
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await client.request(`/api/clientarea/keys/${id}/status`, {
+      method: 'PATCH',
+      json: { status },
+      ...(signal ? { signal } : {}),
+    })
+  } catch (error) {
+    // 服务端契约是 200 空响应体；envelope 解析器对空响应体抛错，2xx 即更新成功。
     if (error instanceof InvalidResponseError) return
     throw error
   }

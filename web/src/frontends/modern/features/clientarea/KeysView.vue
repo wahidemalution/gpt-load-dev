@@ -3,7 +3,13 @@ import { DialogRoot } from 'reka-ui'
 import { computed, onMounted, onScopeDispose, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { createKey, deleteKey, listKeys, type OwnedKeyView } from '@modern/api/clientarea'
+import {
+  createKey,
+  deleteKey,
+  listKeys,
+  updateKeyStatus,
+  type OwnedKeyView,
+} from '@modern/api/clientarea'
 import { formatNanoUSD } from '@modern/app/format'
 import {
   AppBadge,
@@ -20,6 +26,7 @@ import { dateFormatter } from '@modern/components/ui/intl-formatters'
 import { ApiError } from '@shared/http/errors'
 
 import { useClientAreaShell, useUserApiClient } from './client-area'
+import KeyLimitsDialog from './KeyLimitsDialog.vue'
 
 const { t, locale } = useI18n()
 const client = useUserApiClient()
@@ -39,6 +46,10 @@ const revealed = ref('')
 const disabling = ref<OwnedKeyView>()
 const disablingBusy = ref(false)
 const disableError = ref('')
+
+const limitsTarget = ref<OwnedKeyView | null>(null)
+const statusBusy = ref<Set<number>>(new Set())
+const statusError = ref('')
 
 const quotaReached = computed(
   () => profile.value !== null && keys.value.length >= profile.value.max_api_keys,
@@ -111,6 +122,29 @@ async function confirmDisable(): Promise<void> {
     disablingBusy.value = false
   }
 }
+
+function openLimits(row: OwnedKeyView): void {
+  limitsTarget.value = row
+}
+
+async function toggleStatus(row: OwnedKeyView): Promise<void> {
+  if (statusBusy.value.has(row.id)) return
+  const next = row.status === 'active' ? 'disabled' : 'active'
+  statusBusy.value = new Set(statusBusy.value).add(row.id)
+  statusError.value = ''
+  try {
+    await updateKeyStatus(client, row.id, next)
+    await load()
+  } catch {
+    statusError.value = t(
+      next === 'active' ? 'clientarea.keys.enableFailed' : 'clientarea.keys.disableFailed',
+    )
+  } finally {
+    const pending = new Set(statusBusy.value)
+    pending.delete(row.id)
+    statusBusy.value = pending
+  }
+}
 </script>
 
 <template>
@@ -146,7 +180,7 @@ async function confirmDisable(): Promise<void> {
             <th scope="col">{{ t('clientarea.keys.key') }}</th>
             <th scope="col">{{ t('clientarea.keys.status') }}</th>
             <th scope="col">{{ t('clientarea.keys.created') }}</th>
-            <th scope="col">{{ t('clientarea.keys.usage30d') }}</th>
+            <th scope="col">{{ t('clientarea.keys.totalUsage') }}</th>
             <th scope="col" class="modern-clientarea-table-actions">
               {{ t('clientarea.keys.actions') }}
             </th>
@@ -163,16 +197,19 @@ async function confirmDisable(): Promise<void> {
             </td>
             <td>{{ format.format(row.created_at_ms) }}</td>
             <td class="modern-clientarea-mono">
-              {{ formatNanoUSD(row.usage_30d_nano_usd, locale) }}
+              {{ formatNanoUSD(row.usage_total_nano_usd, locale) }}
             </td>
             <td class="modern-clientarea-table-actions">
+              <AppButton variant="text" size="sm" @click="openLimits(row)">
+                {{ t('clientarea.keys.limits.action') }}
+              </AppButton>
               <AppButton
                 variant="text"
                 size="sm"
-                :disabled="row.status !== 'active'"
-                @click="disabling = row"
+                :loading="statusBusy.has(row.id)"
+                @click="toggleStatus(row)"
               >
-                {{ t('clientarea.keys.disable') }}
+                {{ row.status === 'active' ? t('clientarea.keys.disable') : t('clientarea.keys.enable') }}
               </AppButton>
             </td>
           </tr>
@@ -240,6 +277,20 @@ async function confirmDisable(): Promise<void> {
         </div>
       </AppDialogContent>
     </DialogRoot>
+
+    <AppNotice v-if="statusError" tone="danger">{{ statusError }}</AppNotice>
+
+    <KeyLimitsDialog
+      v-if="limitsTarget"
+      :open="limitsTarget !== null"
+      :owned-key="limitsTarget"
+      @update:open="
+        (open: boolean) => {
+          if (!open) limitsTarget = null
+        }
+      "
+      @saved="load"
+    />
 
     <AppConfirmDialog
       :open="Boolean(disabling)"
