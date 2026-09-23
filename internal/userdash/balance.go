@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"gpt-load/internal/pricing"
 	"gpt-load/internal/storage/models"
 )
 
@@ -69,6 +70,11 @@ func (s *Service) AdjustBalance(ctx context.Context, userID uint, deltaNanoUSD i
 		profile = profileFromRow(&user)
 		return nil
 	})
+	if err == nil {
+		// The ledger and balance are committed; drop the gateway's cached view
+		// so the change is visible before the TTL expires.
+		s.invalidateCachedBalance()
+	}
 	return profile, err
 }
 
@@ -122,7 +128,16 @@ func DeductCosts(ctx context.Context, tx *gorm.DB, costs []AccessKeyCost) error 
 		if !ok {
 			continue
 		}
-		perUser[userID] += cost.CostNanoUSD // caller pre-checked overflow on journals
+		// A wrapped per-user sum would turn into a negative deduction that
+		// increases the balance. Reject the whole batch instead.
+		sum, ok := pricing.CheckedAddNanoUSD(
+			pricing.NanoUSD(perUser[userID]),
+			pricing.NanoUSD(cost.CostNanoUSD),
+		)
+		if !ok {
+			return fmt.Errorf("%w: deducted costs for user %d overflow int64", ErrBalanceOverflow, userID)
+		}
+		perUser[userID] = int64(sum)
 	}
 	for userID, nano := range perUser {
 		if nano == 0 {

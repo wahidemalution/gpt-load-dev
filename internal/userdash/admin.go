@@ -124,7 +124,10 @@ func (s *Service) ListAdminUsers(ctx context.Context, query AdminListQuery) (Adm
 	base := s.db.WithContext(ctx).Model(&models.User{})
 	if query.Search != "" {
 		pattern := "%" + likeEscape(query.Search) + "%"
-		base = base.Where("email LIKE ? ESCAPE '\\'", pattern)
+		// Escape character must not be a backslash: MySQL treats `ESCAPE '\'`
+		// as an unterminated string literal. Build the clause from the shared
+		// constant so the escaping above and the SQL below cannot drift apart.
+		base = base.Where(fmt.Sprintf("email LIKE ? ESCAPE '%c'", likeEscapeChar), pattern)
 	}
 	var total int64
 	if err := base.Count(&total).Error; err != nil {
@@ -225,6 +228,9 @@ func (s *Service) CreateAdminUser(ctx context.Context, input AdminCreateInput) (
 			return Profile{}, "", err
 		}
 		profile.BalanceNanoUSD = input.BalanceNanoUSD
+		// The new account starts funded; drop any cached balance view so the
+		// gateway sees the initial balance immediately.
+		s.invalidateCachedBalance()
 	}
 	return profile, returnedPassword, nil
 }
@@ -425,12 +431,21 @@ func (s *Service) ListAdminAdjustments(ctx context.Context, userID uint, page Ad
 	return views, nil
 }
 
+// likeEscapeChar is the LIKE escape character used by the admin user search. A
+// backslash is deliberately avoided: it is special inside MySQL string
+// literals, where `ESCAPE '\'` would escape the closing quote and produce a
+// malformed statement. '!' is inert in every supported dialect.
+const likeEscapeChar = '!'
+
+// likeEscape neutralizes LIKE metacharacters so a user-supplied search term is
+// matched literally. The escape character itself is escaped too, and a literal
+// backslash needs no escaping because it is not the escape character here.
 func likeEscape(value string) string {
 	escaped := make([]byte, 0, len(value))
 	for i := 0; i < len(value); i++ {
 		switch c := value[i]; c {
-		case '\\', '%', '_':
-			escaped = append(escaped, '\\', c)
+		case likeEscapeChar, '%', '_':
+			escaped = append(escaped, likeEscapeChar, c)
 		default:
 			escaped = append(escaped, c)
 		}

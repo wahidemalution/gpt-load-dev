@@ -195,6 +195,101 @@ func TestKeysUsageScopedToOwnedKeys(t *testing.T) {
 	}
 }
 
+func TestKeysListPopulates30DayUsage(t *testing.T) {
+	env := newHTTPTestEnv(t)
+	ctx := context.Background()
+
+	created, err := env.service.Signup(ctx, "keyusage@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Signup() error = %v", err)
+	}
+	token, _, _, err := env.service.Login(ctx, "keyusage@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+
+	withUsage := models.AccessKey{
+		Name: "used", KeyValue: "cipher-used", KeyHash: "used-hash",
+		KeySuffix: "used", Status: "active", UserID: &created.ID,
+	}
+	withoutUsage := models.AccessKey{
+		Name: "idle", KeyValue: "cipher-idle", KeyHash: "idle-hash",
+		KeySuffix: "idle", Status: "active", UserID: &created.ID,
+	}
+	for _, key := range []*models.AccessKey{&withUsage, &withoutUsage} {
+		if err := env.db.Create(key).Error; err != nil {
+			t.Fatalf("seed owned key: %v", err)
+		}
+	}
+
+	// In-window usage for the first key only, split across two buckets/models.
+	recentBucket := env.now.Add(-time.Hour).UnixMilli()
+	oldBucket := env.now.Add(-40 * 24 * time.Hour).UnixMilli()
+	stats := []models.UsageStat{
+		{BucketStartMS: recentBucket, AccessKeyID: withUsage.ID, Model: "gpt-5", RequestCount: 3, SuccessCount: 3, EstimatedCostNanoUSD: 1500},
+		{BucketStartMS: recentBucket, AccessKeyID: withUsage.ID, Model: "gpt-4", RequestCount: 2, SuccessCount: 2, EstimatedCostNanoUSD: 500},
+		// Outside the 30-day window: must not be counted.
+		{BucketStartMS: oldBucket, AccessKeyID: withUsage.ID, Model: "gpt-3", RequestCount: 9, SuccessCount: 9, EstimatedCostNanoUSD: 9000},
+	}
+	for i := range stats {
+		if err := env.db.Create(&stats[i]).Error; err != nil {
+			t.Fatalf("seed usage stat #%d: %v", i, err)
+		}
+	}
+	lastRequestMS := env.now.Add(-2 * time.Hour).UnixMilli()
+	log := models.RequestLog{
+		ID: "req-key-usage", AccessKeyID: withUsage.ID, Protocol: "openai",
+		ClientModel: "gpt-5", Status: "success", StatusCode: 200,
+		CompletedAtMS: lastRequestMS, DurationMs: 10,
+		UsageState: "complete", CostState: "priced", PricingCompleteness: "complete",
+		EstimatedCostNanoUSD: 1500,
+	}
+	if err := env.db.Create(&log).Error; err != nil {
+		t.Fatalf("seed request log: %v", err)
+	}
+
+	recorder := env.do(http.MethodGet, "/api/clientarea/keys", token, nil)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /keys = %d %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	payload := decodeEnvelope(t, recorder)
+	var views []OwnedKeyView
+	if err := json.Unmarshal(payload.Data, &views); err != nil {
+		t.Fatalf("decode key list: %v", err)
+	}
+	if len(views) != 2 {
+		t.Fatalf("key list = %d rows, want 2", len(views))
+	}
+	byID := make(map[uint]OwnedKeyView, len(views))
+	for _, view := range views {
+		byID[view.ID] = view
+	}
+
+	used, ok := byID[withUsage.ID]
+	if !ok {
+		t.Fatalf("key %d missing from list", withUsage.ID)
+	}
+	if used.Usage30dNanoUSD != 2000 || used.RequestCount30d != 5 {
+		t.Fatalf("used key usage = %d nano / %d requests, want 2000 / 5",
+			used.Usage30dNanoUSD, used.RequestCount30d)
+	}
+	if used.LastRequestAtMS == nil || *used.LastRequestAtMS != lastRequestMS {
+		t.Fatalf("used key last_request_at_ms = %v, want %d", used.LastRequestAtMS, lastRequestMS)
+	}
+
+	idle, ok := byID[withoutUsage.ID]
+	if !ok {
+		t.Fatalf("key %d missing from list", withoutUsage.ID)
+	}
+	if idle.Usage30dNanoUSD != 0 || idle.RequestCount30d != 0 {
+		t.Fatalf("idle key usage = %d nano / %d requests, want 0 / 0",
+			idle.Usage30dNanoUSD, idle.RequestCount30d)
+	}
+	if idle.LastRequestAtMS != nil {
+		t.Fatalf("idle key last_request_at_ms = %v, want nil", *idle.LastRequestAtMS)
+	}
+}
+
 func TestOwnedKeyMutationsRepublishRuntimeState(t *testing.T) {
 	env := newHTTPTestEnv(t)
 	ctx := context.Background()
@@ -223,6 +318,43 @@ func TestOwnedKeyMutationsRepublishRuntimeState(t *testing.T) {
 	}
 	if refreshes != 2 {
 		t.Fatalf("refreshes after disable = %d, want 2 (gateway must observe the disabled key)", refreshes)
+	}
+}
+
+func TestAdjustBalanceInvalidatesBalanceGate(t *testing.T) {
+	env := newHTTPTestEnv(t)
+	ctx := context.Background()
+
+	created, err := env.service.Signup(ctx, "invalidate@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Signup() error = %v", err)
+	}
+
+	invalidations := 0
+	env.service.WithBalanceInvalidator(func() { invalidations++ })
+
+	if _, err := env.service.AdjustBalance(ctx, created.ID, 500, "topup", "seed", "admin"); err != nil {
+		t.Fatalf("AdjustBalance() error = %v", err)
+	}
+	if invalidations != 1 {
+		t.Fatalf("invalidations after AdjustBalance = %d, want 1 (a topped-up user must not stay 402)", invalidations)
+	}
+}
+
+func TestCreateAdminUserWithBalanceInvalidatesBalanceGate(t *testing.T) {
+	env := newHTTPTestEnv(t)
+	ctx := context.Background()
+
+	invalidations := 0
+	env.service.WithBalanceInvalidator(func() { invalidations++ })
+
+	if _, _, err := env.service.CreateAdminUser(ctx, AdminCreateInput{
+		Email: "invalidate-create@example.com", Password: "password1", BalanceNanoUSD: 1000,
+	}); err != nil {
+		t.Fatalf("CreateAdminUser() error = %v", err)
+	}
+	if invalidations != 1 {
+		t.Fatalf("invalidations after CreateAdminUser initial balance = %d, want 1", invalidations)
 	}
 }
 

@@ -46,6 +46,10 @@ type Service struct {
 	// refreshState republishes the committed runtime snapshot so the gateway
 	// observes keys this service writes outside the control write path.
 	refreshState func(context.Context) error
+
+	// invalidateBalance drops the gateway's cached balance view after a balance
+	// change so a topped-up user is not left failing closed until the TTL.
+	invalidateBalance func()
 }
 
 func NewService(db *gorm.DB, random io.Reader, now func() time.Time) *Service {
@@ -82,6 +86,22 @@ func (s *Service) refreshRuntime(ctx context.Context) error {
 		return nil
 	}
 	return s.refreshState(ctx)
+}
+
+// WithBalanceInvalidator installs the hook that drops the gateway's cached
+// balance view after a balance mutation. Nil-tolerant: when unset, the cache
+// simply expires on its own TTL.
+func (s *Service) WithBalanceInvalidator(invalidate func()) *Service {
+	s.invalidateBalance = invalidate
+	return s
+}
+
+// invalidateCachedBalance fires the balance-invalidator hook, if installed.
+func (s *Service) invalidateCachedBalance() {
+	if s.invalidateBalance == nil {
+		return
+	}
+	s.invalidateBalance()
 }
 
 type Profile struct {

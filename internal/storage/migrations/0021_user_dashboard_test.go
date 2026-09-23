@@ -24,6 +24,10 @@ func TestUserDashboardMigrationCreatesTablesAndUserIDColumn(t *testing.T) {
 	if !db.Migrator().HasColumn("access_keys", "user_id") {
 		t.Error("Up0021 did not add access_keys.user_id")
 	}
+	// A fresh install must also get the index on the nullable user_id column.
+	if !db.Migrator().HasIndex("access_keys", "idx_access_keys_user_id") {
+		t.Error("Up0021 did not create the access_keys.user_id index")
+	}
 
 	if err := migrations.Validate0021(db); err != nil {
 		t.Errorf("Validate0021() error = %v", err)

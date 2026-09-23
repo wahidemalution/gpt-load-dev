@@ -44,8 +44,10 @@ type userBalanceAdjustment0021 struct {
 
 func (userBalanceAdjustment0021) TableName() string { return "user_balance_adjustments" }
 
+const accessKeyUserIDIndexName0021 = "idx_access_keys_user_id"
+
 type accessKeyUserID0021 struct {
-	UserID *uint `gorm:"column:user_id;index"`
+	UserID *uint `gorm:"column:user_id;index:idx_access_keys_user_id"`
 }
 
 func (accessKeyUserID0021) TableName() string { return "access_keys" }
@@ -67,6 +69,14 @@ func Up0021(db *gorm.DB) error {
 	if !db.Migrator().HasColumn(&accessKeyUserID0021{}, "user_id") {
 		if err := db.Migrator().AddColumn(&accessKeyUserID0021{}, "user_id"); err != nil {
 			return fmt.Errorf("add access_keys.user_id: %w", err)
+		}
+	}
+	// Migrator.AddColumn never creates the index declared on the mirror model,
+	// so create it explicitly. Migration 0022 repeats this idempotently for
+	// deployments that already applied 0021 before the index existed.
+	if !db.Migrator().HasIndex(&accessKeyUserID0021{}, accessKeyUserIDIndexName0021) {
+		if err := db.Migrator().CreateIndex(&accessKeyUserID0021{}, accessKeyUserIDIndexName0021); err != nil {
+			return fmt.Errorf("create access_keys.user_id index: %w", err)
 		}
 	}
 	return Validate0021(db)

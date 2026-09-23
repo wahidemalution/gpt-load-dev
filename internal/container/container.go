@@ -334,10 +334,12 @@ func newHTTPRegistry(
 	webUIServer *webui.Server,
 	db *gorm.DB,
 	encryptionService encryption.Service,
+	balanceGate *userdash.BalanceGate,
 ) (*httproute.Registry, error) {
 	userdashService := userdash.NewService(db, nil, nil).
 		WithEncryptor(encryptionService).
-		WithStateRefresher(controlServer.RefreshRuntimeState)
+		WithStateRefresher(controlServer.RefreshRuntimeState).
+		WithBalanceInvalidator(balanceGate.Invalidate)
 	userdashModule := userdash.NewHTTPModule(
 		userdashService,
 		logrus.StandardLogger(),

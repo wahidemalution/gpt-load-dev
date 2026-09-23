@@ -163,6 +163,32 @@ func TestBalanceAdjustZeroDeltaRejected(t *testing.T) {
 	}
 }
 
+// TestDeductCostsRejectsOverflowingBatch guards the money arithmetic: two
+// costs for the same user whose sum wraps int64 must be rejected wholesale
+// (balance untouched), never applied as a wrapped negative deduction that would
+// silently increase the user's balance.
+func TestDeductCostsRejectsOverflowingBatch(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+	userID, keyID := seedBalanceUser(t, env)
+
+	if _, err := env.service.AdjustBalance(ctx, userID, 1000, "topup", "seed", "admin"); err != nil {
+		t.Fatalf("AdjustBalance(+1000) error = %v", err)
+	}
+
+	const half = math.MaxInt64/2 + 1
+	costs := []AccessKeyCost{
+		{AccessKeyID: keyID, CostNanoUSD: half},
+		{AccessKeyID: keyID, CostNanoUSD: half},
+	}
+	if err := DeductCosts(ctx, env.db, costs); err == nil {
+		t.Fatal("DeductCosts(overflow) error = nil, want wrapped overflow error")
+	}
+	if got, _ := env.service.GetBalance(ctx, userID); got != 1000 {
+		t.Fatalf("balance after rejected overflow = %d, want 1000 (must not deduct)", got)
+	}
+}
+
 func TestBalanceConcurrentOverflowGuard(t *testing.T) {
 	env := newTestEnv(t)
 	ctx := context.Background()

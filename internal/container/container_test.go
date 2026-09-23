@@ -37,6 +37,7 @@ import (
 	"gpt-load/internal/storage"
 	"gpt-load/internal/storage/models"
 	"gpt-load/internal/telemetry"
+	"gpt-load/internal/userdash"
 	"gpt-load/internal/webui"
 )
 
@@ -699,6 +700,54 @@ func TestBuildContainerUsesSingletonAccessKeyRPMLimiter(t *testing.T) {
 	}
 	if first != second {
 		t.Fatalf("AccessKeyRPM instances differ: first=%p second=%p", first, second)
+	}
+}
+
+// TestBuildContainerUsesSingletonBalanceGate pins the invariant that lets an
+// admin topup invalidate the gateway's cached balance: the container provides
+// exactly one *userdash.BalanceGate, so the instance handed to the userdash
+// registry provider (which installs the invalidator) is the same one the
+// gateway handler consults.
+func TestBuildContainerUsesSingletonBalanceGate(t *testing.T) {
+	t.Setenv("AUTH_KEY", "test-auth-key")
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("DATABASE_DSN", ":memory:")
+	t.Setenv("ENCRYPTION_KEY", "test-master-key-long")
+
+	dependencyContainer, err := BuildContainer()
+	if err != nil {
+		t.Fatalf("BuildContainer() error = %v", err)
+	}
+
+	var first *userdash.BalanceGate
+	err = dependencyContainer.Invoke(func(
+		gate *userdash.BalanceGate,
+		handler *gateway.Handler,
+		db *gorm.DB,
+	) {
+		first = gate
+		if handler == nil {
+			t.Fatal("gateway handler was not resolved")
+		}
+		t.Cleanup(func() {
+			sqlDB, dbErr := db.DB()
+			if dbErr == nil {
+				_ = sqlDB.Close()
+			}
+		})
+	})
+	if err != nil {
+		t.Fatalf("resolve first BalanceGate: %v", err)
+	}
+
+	var second *userdash.BalanceGate
+	if err := dependencyContainer.Invoke(func(gate *userdash.BalanceGate) {
+		second = gate
+	}); err != nil {
+		t.Fatalf("resolve second BalanceGate: %v", err)
+	}
+	if first == nil || second != first {
+		t.Fatalf("BalanceGate instances differ: first=%p second=%p", first, second)
 	}
 }
 
