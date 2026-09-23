@@ -289,6 +289,7 @@ onScopeDispose(() => controller.abort())
                 <th scope="col">{{ t('users.detail.keyConcurrent') }}</th>
                 <th scope="col">{{ t('users.detail.keyCredit') }}</th>
                 <th scope="col">{{ t('users.detail.keyModels') }}</th>
+                <th scope="col">{{ t('users.detail.keyUsage') }}</th>
                 <th scope="col">{{ t('accessKeys.actions') }}</th>
               </tr>
             </thead>
@@ -312,6 +313,9 @@ onScopeDispose(() => controller.abort())
                 </td>
                 <td>
                   {{ key.models.length ? key.models.join(', ') : '—' }}
+                </td>
+                <td class="modern-user-number">
+                  {{ formatNanoUSD(key.usage_total_nano_usd, locale) }}
                 </td>
                 <td>
                   <AppButton size="xs" variant="ghost" @click="openLimits(key)">{{

@@ -321,6 +321,7 @@ export default {
       keyConcurrent: 'Concurrent',
       keyCredit: 'Lifetime credit (USD)',
       keyModels: 'Allowed models',
+      keyUsage: 'Lifetime usage',
       editLimits: 'Edit limits',
       limitsSaved: 'Key limits updated.',
       limitsFailed: 'Unable to update the key limits. Check the values and try again.',

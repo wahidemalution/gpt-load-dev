@@ -8,6 +8,7 @@ import {
   updateAccessKey,
   type AccessInput,
   type AccessKey,
+  type CostRule,
 } from '@modern/api/access-keys'
 import type { AdminUserKeyView } from '@modern/api/admin-users'
 import { getModels } from '@modern/api/models'
@@ -46,7 +47,7 @@ watch(
     base.value = null
     rpm.value = props.ownedKey ? String(props.ownedKey.rpm_limit) : ''
     concurrent.value = props.ownedKey ? String(props.ownedKey.max_concurrent) : ''
-    credit.value = props.ownedKey ? String(props.ownedKey.credit_limit_nano_usd / 1e9) : ''
+    credit.value = props.ownedKey ? nanoToDecimal(props.ownedKey.credit_limit_nano_usd) : ''
     models.value = props.ownedKey ? [...props.ownedKey.models] : []
     void loadBase()
     void loadModels()
@@ -82,6 +83,15 @@ function nonNegativeInteger(value: string): number | undefined {
   return Number.isSafeInteger(parsed) ? parsed : undefined
 }
 
+// Render a nano-USD integer as a plain decimal string without scientific
+// notation (String(n/1e9) emits "1e-9" for sub-USD values).
+function nanoToDecimal(nano: number): string {
+  if (nano <= 0) return ''
+  const whole = Math.floor(nano / 1e9)
+  const fraction = String(nano % 1e9).padStart(9, '0').replace(/0+$/, '')
+  return fraction ? `${whole}.${fraction}` : String(whole)
+}
+
 function creditLimitNanoUSD(): number | undefined {
   const raw = credit.value.trim()
   if (!/^(0|[1-9]\d*)(\.\d{1,9})?$/.test(raw)) return undefined
@@ -90,25 +100,40 @@ function creditLimitNanoUSD(): number | undefined {
   return Number.isSafeInteger(nano) && nano > 0 ? nano : undefined
 }
 
+function currentCreditNanoUSD(rules: CostRule[]): number {
+  const total = rules.find((rule) => rule.kind === 'total')
+  return total ? Math.round(Number(total.limit_usd) * 1e9) : 0
+}
+
 async function submit(): Promise<void> {
   const target = props.ownedKey
   const current = base.value
   if (!target || !current || submitting.value) return
   const rpmValue = nonNegativeInteger(rpm.value)
   const concurrentValue = nonNegativeInteger(concurrent.value)
-  const creditNanoUSD = creditLimitNanoUSD()
-  if (rpmValue === undefined || concurrentValue === undefined || creditNanoUSD === undefined) {
+  if (rpmValue === undefined || concurrentValue === undefined) {
     error.value = t('users.detail.limitsFailed')
     return
   }
   const patch: Partial<AccessInput> = {}
   if (rpmValue !== current.rpm_limit) patch.rpm_limit = rpmValue
   if (concurrentValue !== current.max_concurrent) patch.max_concurrent = concurrentValue
-  const currentCredit = current.cost_limit_rules.find((rule) => rule.kind === 'total')
-  const currentCreditNanoUSD = currentCredit ? Math.round(Number(currentCredit.limit_usd) * 1e9) : 0
-  if (creditNanoUSD !== currentCreditNanoUSD)
+  const storedCredit = currentCreditNanoUSD(current.cost_limit_rules)
+  const creditDirty = credit.value.trim() !== nanoToDecimal(storedCredit)
+  if (creditDirty) {
+    const creditNanoUSD = creditLimitNanoUSD()
+    if (creditNanoUSD === undefined) {
+      error.value = t('users.detail.limitsFailed')
+      return
+    }
+    // PUT reconciles the whole rule set: keep periodic rules untouched and
+    // replace only the total rule (0 clears it), matching the client-area path.
+    const periodic = current.cost_limit_rules.filter((rule) => rule.kind === 'periodic')
     patch.cost_limit_rules =
-      creditNanoUSD > 0 ? [{ kind: 'total', limit_usd: String(creditNanoUSD / 1e9) }] : []
+      creditNanoUSD > 0
+        ? [...periodic, { kind: 'total', limit_usd: String(creditNanoUSD / 1e9) }]
+        : periodic
+  }
   if (models.value.join('\n') !== current.filters.models.join('\n'))
     patch.filters = { ...current.filters, models: models.value }
   if (!Object.keys(patch).length) {

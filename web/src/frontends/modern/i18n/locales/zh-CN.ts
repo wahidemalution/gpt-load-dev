@@ -315,6 +315,7 @@ export default {
       keyConcurrent: '最大并发',
       keyCredit: '累计额度（美元）',
       keyModels: '允许的模型',
+      keyUsage: '累计用量',
       editLimits: '编辑限制',
       limitsSaved: '密钥限制已更新。',
       limitsFailed: '密钥限制更新失败，请检查输入后重试。',

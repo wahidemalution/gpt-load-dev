@@ -322,6 +322,7 @@ export default {
       keyConcurrent: '最大同時実行数',
       keyCredit: '累計クレジット（USD）',
       keyModels: '許可するモデル',
+      keyUsage: '累計使用量',
       editLimits: '制限を編集',
       limitsSaved: 'キーの制限を更新しました。',
       limitsFailed: 'キーの制限を更新できませんでした。入力内容を確認して再試行してください。',
