@@ -2,31 +2,25 @@ package ratelimit
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
 // AccessKeyConcurrency bounds simultaneous in-flight requests per access key.
 //
-// ponytail: process-local counters. In a multi-instance deployment each
-// instance enforces the limit independently, so the effective global limit is
-// `limit * instances`. Upgrade path: back the counter with a shared store
-// (Redis/DB atomic) if cross-instance enforcement is required.
+// ponytail: process-local counters under a single mutex. In a multi-instance
+// deployment each instance enforces the limit independently, so the effective
+// global limit is `limit * instances`. Upgrade path: back the counter with a
+// shared store (Redis/DB atomic) if cross-instance enforcement is required.
+// A single mutex is deliberate: the map lookup, the count check/increment, and
+// the count-zero cleanup must all be atomic with respect to each other, and at
+// this scale one lock is simpler and cheap enough. Shard it only if contention
+// is measured.
 type AccessKeyConcurrency struct {
-	entries sync.Map // uint -> *keyCounter
-}
-
-// keyCounter pairs a per-key mutex with the in-flight count. The mutex makes
-// the check-increment and decrement-and-maybe-delete critical sections atomic
-// with respect to each other, so the limit can never be exceeded and a live
-// entry is never deleted out from under a concurrent Acquire. The atomic
-// counter is retained only so InFlight can read without taking the lock.
-type keyCounter struct {
-	mu    sync.Mutex
-	value atomic.Int64
+	mu      sync.Mutex
+	entries map[uint]int64
 }
 
 func NewAccessKeyConcurrency() *AccessKeyConcurrency {
-	return &AccessKeyConcurrency{}
+	return &AccessKeyConcurrency{entries: make(map[uint]int64)}
 }
 
 // Acquire reserves one in-flight slot for the key. It returns a release
@@ -36,24 +30,24 @@ func (c *AccessKeyConcurrency) Acquire(accessKeyID uint, limit int64) (func(), b
 	if c == nil || accessKeyID == 0 || limit <= 0 {
 		return func() {}, true
 	}
-	counter := c.counter(accessKeyID)
-	counter.mu.Lock()
-	if counter.value.Load() >= limit {
-		counter.mu.Unlock()
+
+	c.mu.Lock()
+	if c.entries[accessKeyID] >= limit {
+		c.mu.Unlock()
 		return func() {}, false
 	}
-	counter.value.Add(1)
-	counter.mu.Unlock()
+	c.entries[accessKeyID]++
+	c.mu.Unlock()
 
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			counter.mu.Lock()
-			counter.value.Add(-1)
-			if counter.value.Load() == 0 {
-				c.entries.CompareAndDelete(accessKeyID, counter)
+			c.mu.Lock()
+			c.entries[accessKeyID]--
+			if c.entries[accessKeyID] == 0 {
+				delete(c.entries, accessKeyID)
 			}
-			counter.mu.Unlock()
+			c.mu.Unlock()
 		})
 	}, true
 }
@@ -62,18 +56,7 @@ func (c *AccessKeyConcurrency) InFlight(accessKeyID uint) int64 {
 	if c == nil {
 		return 0
 	}
-	value, ok := c.entries.Load(accessKeyID)
-	if !ok {
-		return 0
-	}
-	return value.(*keyCounter).value.Load()
-}
-
-func (c *AccessKeyConcurrency) counter(accessKeyID uint) *keyCounter {
-	if value, ok := c.entries.Load(accessKeyID); ok {
-		return value.(*keyCounter)
-	}
-	created := &keyCounter{}
-	actual, _ := c.entries.LoadOrStore(accessKeyID, created)
-	return actual.(*keyCounter)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.entries[accessKeyID]
 }

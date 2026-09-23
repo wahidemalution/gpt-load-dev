@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -56,44 +58,61 @@ func TestAccessKeyConcurrencyIsolationAndCleanup(t *testing.T) {
 }
 
 func TestAccessKeyConcurrencyParallel(t *testing.T) {
-	c := NewAccessKeyConcurrency()
 	const (
 		key      = 9
-		limit    = 7
 		workers  = 64
-		attempts = 5000
+		attempts = 20000
 	)
-	var holders, maxHolders, overLimit atomic.Int64
-	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < attempts; j++ {
-				release, ok := c.Acquire(key, limit)
-				if !ok {
-					continue
-				}
-				held := holders.Add(1)
-				for {
-					observed := maxHolders.Load()
-					if held <= observed || maxHolders.CompareAndSwap(observed, held) {
-						break
+	// Oracle: an external holder gauge. A goroutine increments the gauge
+	// immediately after Acquire returns true and decrements it as the FIRST
+	// action inside release (before the limiter is touched). This ordering is
+	// what makes the gauge sound: every counted holder still owns its slot, so
+	// the gauge can never over-count a freed slot. A limiter that hands out
+	// more than `limit` slots (e.g. via two live counters for one key) will
+	// push the gauge above `limit`.
+	for _, limit := range []int64{1, 2, 3} {
+		limit := limit
+		t.Run(fmt.Sprintf("limit=%d", limit), func(t *testing.T) {
+			c := NewAccessKeyConcurrency()
+			var holders, maxHolders, overLimit atomic.Int64
+			var wg sync.WaitGroup
+			for i := 0; i < workers; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for j := 0; j < attempts; j++ {
+						release, ok := c.Acquire(key, limit)
+						if !ok {
+							continue
+						}
+						held := holders.Add(1)
+						for {
+							previous := maxHolders.Load()
+							if held <= previous || maxHolders.CompareAndSwap(previous, held) {
+								break
+							}
+						}
+						if held > limit {
+							overLimit.Add(1)
+						}
+						runtime.Gosched()
+						wrapped := release
+						release = func() {
+							holders.Add(-1)
+							wrapped()
+						}
+						release()
 					}
-				}
-				if held > limit {
-					overLimit.Add(1)
-				}
-				holders.Add(-1)
-				release()
+				}()
 			}
-		}()
-	}
-	wg.Wait()
-	if got := maxHolders.Load(); got > limit {
-		t.Fatalf("invariant violated: max concurrent holders = %d, limit = %d, over-limit observations = %d", got, limit, overLimit.Load())
-	}
-	if got := c.InFlight(key); got != 0 {
-		t.Fatalf("InFlight = %d, want 0", got)
+			wg.Wait()
+			if got := maxHolders.Load(); got > limit {
+				t.Fatalf("invariant violated: maxHolders=%d limit=%d over=%d", got, limit, overLimit.Load())
+			}
+			if got := c.InFlight(key); got != 0 {
+				t.Fatalf("InFlight = %d, want 0", got)
+			}
+			t.Logf("limit=%d maxHolders=%d", limit, maxHolders.Load())
+		})
 	}
 }
