@@ -58,6 +58,12 @@ export interface ClientAreaUsageRow {
   model: string
   request_count: number
   estimated_cost_nano_usd: number
+  tokens_in: number
+  tokens_out: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  avg_ttft_ms: number | null
+  avg_latency_ms: number
 }
 
 export interface ClientAreaDailyTokenRow {
@@ -124,6 +130,15 @@ function readUsageRow(value: unknown): ClientAreaUsageRow {
     model: text(row.model),
     request_count: integer(row.request_count),
     estimated_cost_nano_usd: integer(row.estimated_cost_nano_usd),
+    tokens_in: integer(row.tokens_in),
+    tokens_out: integer(row.tokens_out),
+    cache_read_tokens: integer(row.cache_read_tokens),
+    cache_write_tokens: integer(row.cache_write_tokens),
+    avg_ttft_ms:
+      row.avg_ttft_ms === null || row.avg_ttft_ms === undefined
+        ? null
+        : integer(row.avg_ttft_ms),
+    avg_latency_ms: integer(row.avg_latency_ms),
   }
 }
 

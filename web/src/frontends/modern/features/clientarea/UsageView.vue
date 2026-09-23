@@ -31,6 +31,38 @@ const requests = computed(() => rows.value.reduce((total, row) => total + row.re
 const costNanoUSD = computed(() =>
   rows.value.reduce((total, row) => total + row.estimated_cost_nano_usd, 0),
 )
+const tokensIn = computed(() => rows.value.reduce((total, row) => total + row.tokens_in, 0))
+const tokensOut = computed(() => rows.value.reduce((total, row) => total + row.tokens_out, 0))
+const cacheReadTokens = computed(() =>
+  rows.value.reduce((total, row) => total + row.cache_read_tokens, 0),
+)
+const cacheWriteTokens = computed(() =>
+  rows.value.reduce((total, row) => total + row.cache_write_tokens, 0),
+)
+const avgLatencyMs = computed(() => {
+  const samples = rows.value.filter((row) => row.avg_latency_ms > 0)
+  if (samples.length === 0) return null
+  return Math.round(
+    samples.reduce((total, row) => total + row.avg_latency_ms, 0) / samples.length,
+  )
+})
+const avgTTFTMs = computed(() => {
+  const samples = rows.value.filter((row) => row.avg_ttft_ms !== null)
+  if (samples.length === 0) return null
+  return Math.round(
+    samples.reduce((total, row) => total + (row.avg_ttft_ms ?? 0), 0) / samples.length,
+  )
+})
+
+function formatDuration(ms: number | null): string {
+  if (ms === null) return '—'
+  const seconds = ms < 1000 ? ms : ms / 1000
+  const value = numberFormatter(locale.value, {
+    minimumFractionDigits: ms < 1000 ? 0 : 1,
+    maximumFractionDigits: ms < 1000 ? 0 : 1,
+  }).format(seconds)
+  return `${value} ${ms < 1000 ? t('clientarea.usage.units.ms') : t('clientarea.usage.units.s')}`
+}
 
 async function load(): Promise<void> {
   controller?.abort()
@@ -90,6 +122,12 @@ watch(period, load)
           <tr>
             <th scope="col">{{ t('clientarea.usage.model') }}</th>
             <th scope="col">{{ t('clientarea.usage.requests') }}</th>
+            <th scope="col">{{ t('clientarea.usage.tokensIn') }}</th>
+            <th scope="col">{{ t('clientarea.usage.tokensOut') }}</th>
+            <th scope="col">{{ t('clientarea.usage.cacheWrite') }}</th>
+            <th scope="col">{{ t('clientarea.usage.cacheRead') }}</th>
+            <th scope="col">{{ t('clientarea.usage.ttft') }}</th>
+            <th scope="col">{{ t('clientarea.usage.latency') }}</th>
             <th scope="col">{{ t('clientarea.usage.cost') }}</th>
           </tr>
         </thead>
@@ -97,6 +135,12 @@ watch(period, load)
           <tr v-for="row in rows" :key="row.model">
             <td>{{ row.model }}</td>
             <td class="modern-clientarea-mono">{{ number.format(row.request_count) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(row.tokens_in) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(row.tokens_out) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(row.cache_write_tokens) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(row.cache_read_tokens) }}</td>
+            <td class="modern-clientarea-mono">{{ formatDuration(row.avg_ttft_ms) }}</td>
+            <td class="modern-clientarea-mono">{{ formatDuration(row.avg_latency_ms) }}</td>
             <td class="modern-clientarea-mono">
               {{ formatNanoUSD(row.estimated_cost_nano_usd, locale) }}
             </td>
@@ -106,6 +150,12 @@ watch(period, load)
           <tr>
             <th scope="row">{{ t('clientarea.usage.total') }}</th>
             <td class="modern-clientarea-mono">{{ number.format(requests) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(tokensIn) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(tokensOut) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(cacheWriteTokens) }}</td>
+            <td class="modern-clientarea-mono">{{ number.format(cacheReadTokens) }}</td>
+            <td class="modern-clientarea-mono">{{ formatDuration(avgTTFTMs) }}</td>
+            <td class="modern-clientarea-mono">{{ formatDuration(avgLatencyMs) }}</td>
             <td class="modern-clientarea-mono">{{ formatNanoUSD(costNanoUSD, locale) }}</td>
           </tr>
         </tfoot>

@@ -5,14 +5,13 @@ import {
   House,
   KeyRound,
   Layers2,
-  LogOut,
   Wallet,
 } from '@lucide/vue'
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 
-import { logout, me } from '@modern/api/clientarea'
+import { me } from '@modern/api/clientarea'
 import { formatNanoUSD } from '@modern/app/format'
 import { AppButton, AppIcon, AppNotice } from '@modern/components/ui'
 import { ApiError } from '@shared/http/errors'
@@ -22,14 +21,12 @@ import { useUserSession, type UserProfile } from './user-session'
 
 const { t, locale } = useI18n()
 const route = useRoute()
-const router = useRouter()
 const client = useUserApiClient()
 const session = useUserSession()
 
 const profile = ref<UserProfile | null>(session.getProfile())
 const loading = ref(false)
 const failed = ref(false)
-const loggingOut = ref(false)
 let controller: AbortController | undefined
 
 const anonymous = computed(() => session.state.token === '')
@@ -75,20 +72,6 @@ watch(() => route.fullPath, refresh)
 watch(anonymous, (isAnonymous) => {
   if (isAnonymous) profile.value = null
 })
-
-async function signOut(): Promise<void> {
-  if (loggingOut.value) return
-  loggingOut.value = true
-  try {
-    await logout(client)
-  } catch {
-    // Best effort: the local session is cleared regardless.
-  } finally {
-    session.clear()
-    loggingOut.value = false
-    await router.replace({ name: 'modern-clientarea-home' })
-  }
-}
 </script>
 
 <template>
@@ -116,15 +99,6 @@ async function signOut(): Promise<void> {
           </span>
           <span class="modern-clientarea-balance-value">{{ balance }}</span>
         </div>
-        <AppButton
-          variant="outline"
-          size="sm"
-          :icon="LogOut"
-          :loading="loggingOut"
-          @click="signOut"
-        >
-          {{ t('clientarea.logout') }}
-        </AppButton>
       </div>
     </aside>
 

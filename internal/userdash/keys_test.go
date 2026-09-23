@@ -151,13 +151,40 @@ func TestKeysUsageScopedToOwnedKeys(t *testing.T) {
 
 	bucketMS := env.now.Add(-time.Hour).UnixMilli()
 	seed := []models.UsageStat{
-		{BucketStartMS: bucketMS, AccessKeyID: owned.ID, Model: "gpt-5", RequestCount: 3, SuccessCount: 3, EstimatedCostNanoUSD: 1500},
+		{BucketStartMS: bucketMS, AccessKeyID: owned.ID, Model: "gpt-5", RequestCount: 3, SuccessCount: 3, EstimatedCostNanoUSD: 1500,
+			UncachedInputTokens: 100, OutputTokens: 40, CacheReadTokens: 7, CacheWrite5MTokens: 5, CacheWrite1HTokens: 3},
 		{BucketStartMS: bucketMS, AccessKeyID: owned.ID, Model: "gpt-4", RequestCount: 1, SuccessCount: 1, EstimatedCostNanoUSD: 500},
-		{BucketStartMS: bucketMS, AccessKeyID: unowned.ID, Model: "gpt-5", RequestCount: 100, SuccessCount: 100, EstimatedCostNanoUSD: 999999},
+		{BucketStartMS: bucketMS, AccessKeyID: unowned.ID, Model: "gpt-5", RequestCount: 100, SuccessCount: 100, EstimatedCostNanoUSD: 999999,
+			UncachedInputTokens: 99999},
 	}
 	for i := range seed {
 		if err := env.db.Create(&seed[i]).Error; err != nil {
 			t.Fatalf("seed usage stat #%d: %v", i, err)
+		}
+	}
+
+	// Two streaming request logs for gpt-5 (avg latency 150ms, avg TTFT 110ms)
+	// plus one non-streaming log (no TTFT). One gpt-4 log carries no TTFT.
+	logs := []models.RequestLog{
+		{ID: "u-1", AccessKeyID: owned.ID, Protocol: "openai", ClientModel: "gpt-5", Status: "success",
+			StatusCode: 200, CompletedAtMS: bucketMS, DurationMs: 100, FirstResponseMs: ptrInt64(80),
+			UsageState: "complete", CostState: "priced", PricingCompleteness: "complete"},
+		{ID: "u-2", AccessKeyID: owned.ID, Protocol: "openai", ClientModel: "gpt-5", Status: "success",
+			StatusCode: 200, CompletedAtMS: bucketMS, DurationMs: 200, FirstResponseMs: ptrInt64(140),
+			UsageState: "complete", CostState: "priced", PricingCompleteness: "complete"},
+		{ID: "u-3", AccessKeyID: owned.ID, Protocol: "openai", ClientModel: "gpt-5", Status: "success",
+			StatusCode: 200, CompletedAtMS: bucketMS, DurationMs: 300,
+			UsageState: "complete", CostState: "priced", PricingCompleteness: "complete"},
+		{ID: "u-4", AccessKeyID: owned.ID, Protocol: "openai", ClientModel: "gpt-4", Status: "success",
+			StatusCode: 200, CompletedAtMS: bucketMS, DurationMs: 50,
+			UsageState: "complete", CostState: "priced", PricingCompleteness: "complete"},
+		{ID: "u-5", AccessKeyID: unowned.ID, Protocol: "openai", ClientModel: "gpt-5", Status: "success",
+			StatusCode: 200, CompletedAtMS: bucketMS, DurationMs: 9000, FirstResponseMs: ptrInt64(9000),
+			UsageState: "complete", CostState: "priced", PricingCompleteness: "complete"},
+	}
+	for i := range logs {
+		if err := env.db.Create(&logs[i]).Error; err != nil {
+			t.Fatalf("seed request log #%d: %v", i, err)
 		}
 	}
 
@@ -176,6 +203,12 @@ func TestKeysUsageScopedToOwnedKeys(t *testing.T) {
 		Model                string `json:"model"`
 		RequestCount         int64  `json:"request_count"`
 		EstimatedCostNanoUSD int64  `json:"estimated_cost_nano_usd"`
+		TokensIn             int64  `json:"tokens_in"`
+		TokensOut            int64  `json:"tokens_out"`
+		CacheReadTokens      int64  `json:"cache_read_tokens"`
+		CacheWriteTokens     int64  `json:"cache_write_tokens"`
+		AvgTTFTMs            *int64 `json:"avg_ttft_ms"`
+		AvgLatencyMs         int64  `json:"avg_latency_ms"`
 	}
 	if err := json.Unmarshal(payload.Data, &rows); err != nil {
 		t.Fatalf("decode usage rows: %v", err)
@@ -192,8 +225,33 @@ func TestKeysUsageScopedToOwnedKeys(t *testing.T) {
 		if !ok || sums[0] != row.RequestCount || sums[1] != row.EstimatedCostNanoUSD {
 			t.Fatalf("usage row %#v, want model=%v requests=%d cost=%d", row, row.Model, sums[0], sums[1])
 		}
+		switch row.Model {
+		case "gpt-5":
+			if row.TokensIn != 100 || row.TokensOut != 40 || row.CacheReadTokens != 7 || row.CacheWriteTokens != 8 {
+				t.Fatalf("gpt-5 tokens = in:%d out:%d read:%d write:%d, want 100/40/7/8",
+					row.TokensIn, row.TokensOut, row.CacheReadTokens, row.CacheWriteTokens)
+			}
+			if row.AvgTTFTMs == nil || *row.AvgTTFTMs != 110 {
+				t.Fatalf("gpt-5 avg_ttft_ms = %v, want 110 (streaming logs only)", row.AvgTTFTMs)
+			}
+			if row.AvgLatencyMs != 200 {
+				t.Fatalf("gpt-5 avg_latency_ms = %d, want 200", row.AvgLatencyMs)
+			}
+		case "gpt-4":
+			if row.TokensIn != 0 || row.CacheWriteTokens != 0 {
+				t.Fatalf("gpt-4 tokens = %#v, want zeroed", row)
+			}
+			if row.AvgTTFTMs != nil {
+				t.Fatalf("gpt-4 avg_ttft_ms = %v, want nil (no streaming samples)", *row.AvgTTFTMs)
+			}
+			if row.AvgLatencyMs != 50 {
+				t.Fatalf("gpt-4 avg_latency_ms = %d, want 50", row.AvgLatencyMs)
+			}
+		}
 	}
 }
+
+func ptrInt64(value int64) *int64 { return &value }
 
 func TestUsageDailyGranularityScopedAndAligned(t *testing.T) {
 	env := newHTTPTestEnv(t)

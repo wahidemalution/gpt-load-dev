@@ -561,6 +561,13 @@ func (m *HTTPModule) handleUsage(c *gin.Context) {
 		response.Error(c, app_errors.ErrInternalServer)
 		return
 	}
+	latency, err := m.service.QueryOwnedLatency(c.Request.Context(), profile.ID, fromMS, toMS)
+	if err != nil {
+		logrus.WithError(err).Error("userdash: usage latency query failed")
+		response.Error(c, app_errors.ErrInternalServer)
+		return
+	}
+	merged := mergeUsageLatency(rows, latency)
 	// granularity=day adds a per-day token series for the activity heatmap; the
 	// default response stays a bare per-model array for compatibility.
 	if c.Query("granularity") == "day" {
@@ -570,8 +577,8 @@ func (m *HTTPModule) handleUsage(c *gin.Context) {
 			response.Error(c, app_errors.ErrInternalServer)
 			return
 		}
-		response.SuccessI18n(c, "common.success", gin.H{"models": rows, "daily": daily})
+		response.SuccessI18n(c, "common.success", gin.H{"models": merged, "daily": daily})
 		return
 	}
-	response.SuccessI18n(c, "common.success", rows)
+	response.SuccessI18n(c, "common.success", merged)
 }

@@ -1,8 +1,39 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { LogOut } from '@lucide/vue'
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
+import { logout } from '@modern/api/clientarea'
 import { AppButton } from '@modern/components/ui'
+import { useUserApiClient } from '@modern/features/clientarea/client-area'
+import { useUserSession } from '@modern/features/clientarea/user-session'
 import AppearanceMenu from './AppearanceMenu.vue'
+
+const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
+const client = useUserApiClient()
+const session = useUserSession()
+
+const authenticated = computed(() => session.state.token !== '')
+const loggingOut = ref(false)
+
+async function signOut(): Promise<void> {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try {
+    await logout(client)
+  } catch {
+    // Best effort: the local session is cleared regardless.
+  } finally {
+    session.clear()
+    loggingOut.value = false
+    // Private client-area pages render an inline 404 once anonymous, so leave
+    // them for the sign-in view. Public pages stay put and re-render inline.
+    if (route.meta.requiresUserAuth) await router.replace({ name: 'modern-clientarea-home' })
+  }
+}
 </script>
 
 <template>
@@ -18,8 +49,18 @@ import AppearanceMenu from './AppearanceMenu.vue'
     </nav>
     <div class="modern-landing-navbar-actions">
       <AppearanceMenu />
-      <AppButton variant="primary" as-child>
-        <RouterLink :to="{ name: 'modern-login' }">Masuk</RouterLink>
+      <AppButton
+        v-if="authenticated"
+        variant="outline"
+        size="sm"
+        :icon="LogOut"
+        :loading="loggingOut"
+        @click="signOut"
+      >
+        {{ t('clientarea.logout') }}
+      </AppButton>
+      <AppButton v-else variant="primary" as-child>
+        <RouterLink :to="{ name: 'modern-clientarea-home' }">Masuk</RouterLink>
       </AppButton>
     </div>
   </header>

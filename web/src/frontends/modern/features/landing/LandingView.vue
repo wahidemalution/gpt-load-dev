@@ -120,7 +120,7 @@ const faqs = [
       </p>
       <div class="modern-landing-actions">
         <AppButton variant="primary" as-child>
-          <RouterLink :to="{ name: 'modern-login' }">
+          <RouterLink :to="{ name: 'modern-clientarea-home' }">
             Masuk Konsol
             <AppIcon :icon="ArrowRight" size="md" />
           </RouterLink>
@@ -199,7 +199,7 @@ const faqs = [
           Tanpa langganan. Saldo terpotong per token sesuai harga model yang dipakai.
         </p>
         <AppButton variant="primary" as-child>
-          <RouterLink :to="{ name: 'modern-login' }">
+          <RouterLink :to="{ name: 'modern-clientarea-home' }">
             Lihat harga di konsol
             <AppIcon :icon="ArrowRight" size="md" />
           </RouterLink>
@@ -220,7 +220,7 @@ const faqs = [
     <footer class="modern-landing-footer">
       <span>© 2026 Tokenizer</span>
       <span aria-hidden="true">·</span>
-      <RouterLink :to="{ name: 'modern-login' }">Masuk</RouterLink>
+      <RouterLink :to="{ name: 'modern-clientarea-home' }">Masuk</RouterLink>
     </footer>
   </div>
 </template>
