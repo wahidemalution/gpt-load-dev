@@ -1,8 +1,28 @@
 import type { Router } from 'vue-router'
 import { pagePath } from './navigation'
 
-export function loginLocation(redirect?: string) {
-  return { name: 'modern-login', query: redirect ? { redirect } : {} }
+const sessionKey = 'modern.postAuthPath'
+
+export function loginLocation() {
+  return { name: 'modern-login' }
+}
+
+export function rememberPostAuthPath(fullPath: string): void {
+  try {
+    sessionStorage.setItem(sessionKey, fullPath)
+  } catch {
+    // sessionStorage unavailable (private mode) — skip silently
+  }
+}
+
+export function takePostAuthPath(): string | null {
+  try {
+    const value = sessionStorage.getItem(sessionKey)
+    sessionStorage.removeItem(sessionKey)
+    return value
+  } catch {
+    return null
+  }
 }
 
 export function safeRedirect(raw: unknown, router: Router): string {
@@ -24,11 +44,15 @@ export function safeRedirect(raw: unknown, router: Router): string {
   if (
     decoded.startsWith('//') ||
     decoded.includes('\\') ||
-    /[\u0000-\u001f\u007f]/u.test(decoded)
+    decoded.split('').some((char) => {
+      const code = char.codePointAt(0) ?? 0
+      return code < 0x20 || code === 0x7f
+    })
   ) {
     return fallback
   }
   const resolved = router.resolve(raw)
+  if (resolved.name === 'modern-unavailable') return '/404'
   const matchedPath = resolved.matched.at(-1)?.path
   let segments: string[]
   try {
@@ -44,7 +68,6 @@ export function safeRedirect(raw: unknown, router: Router): string {
       segment.startsWith(':') ? segments[index] !== '' : segment === segments[index],
     ) ||
     resolved.name === 'modern-login' ||
-    resolved.name === 'modern-unavailable' ||
     resolved.meta.requiresAuth !== true
   )
     return fallback

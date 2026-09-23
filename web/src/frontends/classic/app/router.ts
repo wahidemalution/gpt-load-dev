@@ -23,6 +23,12 @@ function pageRoute(
 }
 
 const routes: RouteRecordRaw[] = [
+  // 经典版没有落地页，根路径交给登录页（守卫会处理已登录用户跳回首页）。
+  {
+    path: pagePath(pageRouteNames.landing),
+    name: pageRouteNames.landing,
+    redirect: () => loginLocation(),
+  },
   pageRoute(pageRouteNames.home, {
     component: lazyView(() => import('@/features/home/HomeView.vue')),
     meta: {

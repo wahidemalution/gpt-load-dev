@@ -2,14 +2,16 @@
 import { ArrowRight, ChartNoAxesCombined, Coins, ShieldCheck, Zap } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import { getLandingPublic } from '@modern/api/landing-public'
+import { getLandingPublic, type LandingPublicModel } from '@modern/api/landing-public'
 import { AppButton, AppIcon } from '@modern/components/ui'
 import { numberFormatter } from '@modern/components/ui/intl-formatters'
 import { useApiClient } from '@shared/http/client-context'
 
+import LandingModelCard from './LandingModelCard.vue'
+
 const client = useApiClient()
 
-const models = ref<string[]>([])
+const models = ref<LandingPublicModel[]>([])
 const stats = ref<{ totalRequests: number; totalTokens: number } | null>(null)
 const loading = ref(true)
 const failed = ref(false)
@@ -41,6 +43,8 @@ const totalTokens = computed(() =>
   loading.value ? '—' : stats.value ? idNumber.format(stats.value.totalTokens) : '—',
 )
 const modelCount = computed(() => (loading.value ? '—' : idNumber.format(models.value.length)))
+// ponytail: landing menampilkan maksimal 8 model; sisanya diakses lewat halaman /model
+const previewModels = computed(() => models.value.slice(0, 8))
 
 const features = [
   {
@@ -147,11 +151,19 @@ const faqs = [
       <p v-if="failed || models.length === 0" class="modern-landing-models-fallback">
         Model akan segera diumumkan.
       </p>
-      <div v-else class="modern-landing-models">
-        <span v-for="model in models" :key="model" class="modern-landing-model-chip">
-          {{ model }}
-        </span>
-      </div>
+      <template v-else>
+        <div class="modern-landing-model-grid">
+          <LandingModelCard v-for="model in previewModels" :key="model.name" :model="model" />
+        </div>
+        <div v-if="models.length > previewModels.length" class="modern-landing-models-more">
+          <AppButton variant="outline" as-child>
+            <RouterLink :to="{ name: 'modern-model-list' }">
+              Lihat semua {{ models.length }} model
+              <AppIcon :icon="ArrowRight" size="md" />
+            </RouterLink>
+          </AppButton>
+        </div>
+      </template>
     </section>
 
     <section class="modern-landing-section">
@@ -290,17 +302,21 @@ const faqs = [
   font-size: var(--modern-font-size-section);
   font-weight: var(--modern-weight-semibold);
 }
-.modern-landing-models {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--modern-space-2);
+.modern-landing-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  gap: var(--modern-space-4);
 }
-.modern-landing-model-chip {
-  border: var(--modern-line-width) solid var(--modern-border);
-  border-radius: var(--modern-radius-control);
-  background: var(--modern-surface);
-  padding: var(--modern-space-1-5) var(--modern-space-3);
-  font-size: var(--modern-font-size-small);
+.modern-landing-models-more {
+  display: flex;
+  justify-content: center;
+}
+.modern-landing-models-more a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--modern-space-1-5);
+  color: inherit;
+  text-decoration: none;
 }
 .modern-landing-models-fallback {
   color: var(--modern-muted);

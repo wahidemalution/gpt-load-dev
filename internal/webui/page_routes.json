@@ -1,7 +1,8 @@
 {
   "version": 1,
   "routes": [
-    { "name": "home", "path": "/" },
+    { "name": "landing", "path": "/" },
+    { "name": "home", "path": "/dashboard" },
     { "name": "login", "path": "/login" },
     { "name": "import", "path": "/import" },
     { "name": "groups", "path": "/groups" },

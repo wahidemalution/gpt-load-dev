@@ -12,7 +12,7 @@ import AppearanceMenu from './AppearanceMenu.vue'
     </RouterLink>
     <!-- ponytail: no hamburger on mobile — anchors still reachable via scroll; add menu only if requested -->
     <nav class="modern-landing-navbar-links" aria-label="Landing">
-      <a href="#models">Model</a>
+      <RouterLink :to="{ name: 'modern-model-list' }">Model</RouterLink>
       <a href="#harga">Harga</a>
       <a href="#faq">FAQ</a>
     </nav>
@@ -30,7 +30,8 @@ import AppearanceMenu from './AppearanceMenu.vue'
   position: sticky;
   top: 0;
   z-index: 20;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   height: var(--modern-topbar-height);
   align-items: center;
   gap: var(--modern-space-4);
@@ -38,17 +39,21 @@ import AppearanceMenu from './AppearanceMenu.vue'
   background: var(--modern-surface);
   padding: 0 var(--modern-content-inset);
 }
+.modern-landing-navbar > * {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
 .modern-landing-navbar-brand {
+  justify-self: start;
   color: inherit;
   font-size: var(--modern-font-size-section);
   font-weight: var(--modern-weight-semibold);
   text-decoration: none;
 }
 .modern-landing-navbar-links {
-  display: flex;
-  align-items: center;
+  justify-self: center;
   gap: var(--modern-space-4);
-  margin-inline: auto;
 }
 .modern-landing-navbar-links a {
   color: var(--modern-muted);
@@ -59,17 +64,17 @@ import AppearanceMenu from './AppearanceMenu.vue'
   color: var(--modern-accent);
 }
 .modern-landing-navbar-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
+  justify-self: end;
   gap: var(--modern-space-2);
-  margin-left: auto;
 }
 .modern-landing-navbar-actions :deep(a) {
   color: inherit;
   text-decoration: none;
 }
 @media (max-width: 760px) {
+  .modern-landing-navbar {
+    grid-template-columns: 1fr auto;
+  }
   .modern-landing-navbar-links {
     display: none;
   }

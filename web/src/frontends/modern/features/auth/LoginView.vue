@@ -12,7 +12,7 @@ import {
   AppNotice,
   AppTextField,
 } from '@modern/components/ui'
-import { safeRedirect } from '@modern/app/redirect'
+import { safeRedirect, takePostAuthPath } from '@modern/app/redirect'
 import { RequestCancelledError } from '@shared/http/errors'
 import AuthCard from './AuthCard.vue'
 import LoginMascot from './LoginMascot.vue'
@@ -51,7 +51,6 @@ watch(
   () => route.query,
   (query) => {
     const canonical: Record<string, string> = {}
-    if (typeof query.redirect === 'string') canonical.redirect = query.redirect
     if (query.help === 'auth') canonical.help = 'auth'
     if (
       Object.keys(query).length !== Object.keys(canonical).length ||
@@ -94,7 +93,6 @@ function toggleHelp(event: Event): void {
   const open = (event.currentTarget as HTMLDetailsElement).open
   if (open === helpOpen.value) return
   const query: Record<string, string> = {}
-  if (typeof route.query.redirect === 'string') query.redirect = route.query.redirect
   if (open) query.help = 'auth'
   void router.push({ name: 'modern-login', query })
 }
@@ -102,7 +100,7 @@ function toggleHelp(event: Event): void {
 async function continueToPage(): Promise<void> {
   navigationFailed.value = false
   try {
-    const failure = await router.replace(safeRedirect(route.query.redirect, router))
+    const failure = await router.replace(safeRedirect(takePostAuthPath(), router))
     navigationFailed.value = isNavigationFailure(failure)
   } catch {
     navigationFailed.value = true
@@ -124,6 +122,9 @@ async function submit(): Promise<void> {
     authenticated.value = true
     candidate.value = ''
     visible.value = false
+    // ponytail: path tujuan disimpan saat pengguna menekan Masuk dari 404;
+    // menekannya lagi (mis. setelah logout di tab lain) menimpa nilai lama,
+    // jadi pulang ke path lama hanya berlaku tepat setelah submit login
     await continueToPage()
   } catch (error: unknown) {
     if (error instanceof RequestCancelledError || controller.signal.aborted) return

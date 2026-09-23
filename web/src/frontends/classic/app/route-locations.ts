@@ -3,6 +3,7 @@ import type { LocationQueryRaw, RouteLocationRaw } from 'vue-router'
 import { pageRouteEntries } from './page-routes'
 
 const sharedPageRouteNames = {
+  landing: 'landing',
   home: 'home',
   login: 'login',
   import: 'import',
