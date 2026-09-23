@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -56,24 +57,43 @@ func TestAccessKeyConcurrencyIsolationAndCleanup(t *testing.T) {
 
 func TestAccessKeyConcurrencyParallel(t *testing.T) {
 	c := NewAccessKeyConcurrency()
+	const (
+		key      = 9
+		limit    = 7
+		workers  = 64
+		attempts = 5000
+	)
+	var holders, maxHolders, overLimit atomic.Int64
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	allowed := 0
-	for i := 0; i < 50; i++ {
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			release, ok := c.Acquire(9, 10)
-			if ok {
-				mu.Lock()
-				allowed++
-				mu.Unlock()
+			for j := 0; j < attempts; j++ {
+				release, ok := c.Acquire(key, limit)
+				if !ok {
+					continue
+				}
+				held := holders.Add(1)
+				for {
+					observed := maxHolders.Load()
+					if held <= observed || maxHolders.CompareAndSwap(observed, held) {
+						break
+					}
+				}
+				if held > limit {
+					overLimit.Add(1)
+				}
+				holders.Add(-1)
+				release()
 			}
-			release()
 		}()
 	}
 	wg.Wait()
-	if got := c.InFlight(9); got != 0 {
+	if got := maxHolders.Load(); got > limit {
+		t.Fatalf("invariant violated: max concurrent holders = %d, limit = %d, over-limit observations = %d", got, limit, overLimit.Load())
+	}
+	if got := c.InFlight(key); got != 0 {
 		t.Fatalf("InFlight = %d, want 0", got)
 	}
 }

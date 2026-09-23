@@ -12,7 +12,17 @@ import (
 // `limit * instances`. Upgrade path: back the counter with a shared store
 // (Redis/DB atomic) if cross-instance enforcement is required.
 type AccessKeyConcurrency struct {
-	entries sync.Map // uint -> *atomic.Int64
+	entries sync.Map // uint -> *keyCounter
+}
+
+// keyCounter pairs a per-key mutex with the in-flight count. The mutex makes
+// the check-increment and decrement-and-maybe-delete critical sections atomic
+// with respect to each other, so the limit can never be exceeded and a live
+// entry is never deleted out from under a concurrent Acquire. The atomic
+// counter is retained only so InFlight can read without taking the lock.
+type keyCounter struct {
+	mu    sync.Mutex
+	value atomic.Int64
 }
 
 func NewAccessKeyConcurrency() *AccessKeyConcurrency {
@@ -27,16 +37,23 @@ func (c *AccessKeyConcurrency) Acquire(accessKeyID uint, limit int64) (func(), b
 		return func() {}, true
 	}
 	counter := c.counter(accessKeyID)
-	if counter.Add(1) > limit {
-		counter.Add(-1)
+	counter.mu.Lock()
+	if counter.value.Load() >= limit {
+		counter.mu.Unlock()
 		return func() {}, false
 	}
+	counter.value.Add(1)
+	counter.mu.Unlock()
+
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			if counter.Add(-1) == 0 {
+			counter.mu.Lock()
+			counter.value.Add(-1)
+			if counter.value.Load() == 0 {
 				c.entries.CompareAndDelete(accessKeyID, counter)
 			}
+			counter.mu.Unlock()
 		})
 	}, true
 }
@@ -49,14 +66,14 @@ func (c *AccessKeyConcurrency) InFlight(accessKeyID uint) int64 {
 	if !ok {
 		return 0
 	}
-	return value.(*atomic.Int64).Load()
+	return value.(*keyCounter).value.Load()
 }
 
-func (c *AccessKeyConcurrency) counter(accessKeyID uint) *atomic.Int64 {
+func (c *AccessKeyConcurrency) counter(accessKeyID uint) *keyCounter {
 	if value, ok := c.entries.Load(accessKeyID); ok {
-		return value.(*atomic.Int64)
+		return value.(*keyCounter)
 	}
-	created := &atomic.Int64{}
+	created := &keyCounter{}
 	actual, _ := c.entries.LoadOrStore(accessKeyID, created)
-	return actual.(*atomic.Int64)
+	return actual.(*keyCounter)
 }
