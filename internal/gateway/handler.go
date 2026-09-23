@@ -542,9 +542,7 @@ func (handler *Handler) Handle(ginContext *gin.Context) {
 			handler.completeReason(ginContext, recorder, reasonAccessKeyConcurrentLimited)
 			return
 		}
-		if release != nil {
-			releaseConcurrency = release
-		}
+		releaseConcurrency = release
 	}
 	if releaseConcurrency != nil {
 		defer releaseConcurrency()

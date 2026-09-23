@@ -355,7 +355,9 @@ func (s *Service) SetOwnedKeyLimits(ctx context.Context, userID, keyID uint, inp
 
 // setOwnedKeyCreditLimit replaces the key's single `total` cost rule. A limit
 // of 0 deletes the rule (the model CHECK forbids limit_nano_usd <= 0); a
-// positive limit upserts a new revision.
+// positive limit upserts the rule. A limit-only edit of an existing rule keeps
+// the rule revision unchanged so the runtime preserves accumulated spend
+// against the new limit.
 func setOwnedKeyCreditLimit(tx *gorm.DB, keyID uint, limitNanoUSD int64) error {
 	var existing models.AccessKeyCostLimitRule
 	err := tx.Where("access_key_id = ? AND kind = ?", keyID, models.AccessKeyCostLimitKindTotal).
@@ -371,24 +373,16 @@ func setOwnedKeyCreditLimit(tx *gorm.DB, keyID uint, limitNanoUSD int64) error {
 		return tx.Delete(&models.AccessKeyCostLimitRule{}, existing.ID).Error
 	}
 	if found {
-		if existing.RuleRevision == ^uint64(0) {
-			return fmt.Errorf("advance access key cost limit rule %d revision", existing.ID)
-		}
-		nextRevision := existing.RuleRevision + 1
-		if err := tx.Model(&models.AccessKeyCostLimitRule{}).
+		// A limit-only edit keeps the rule revision unchanged so the runtime
+		// treats it as the same rule and preserves accumulated spend. The
+		// runtime resets used_nano_usd to zero whenever the revision changes
+		// (see accessquota.Runtime.Reconcile), which would defeat the cap: a
+		// key that already spent its old limit must stay exhausted against the
+		// new limit. If the new limit is below the already-used amount, the
+		// runtime marks the rule exhausted (used_nano_usd >= limit_nano_usd).
+		return tx.Model(&models.AccessKeyCostLimitRule{}).
 			Where("id = ? AND access_key_id = ?", existing.ID, keyID).
-			Updates(map[string]any{
-				"limit_nano_usd": limitNanoUSD,
-				"rule_revision":  nextRevision,
-			}).Error; err != nil {
-			return err
-		}
-		// Keep the checkpoint revision in lockstep: the runtime restore path
-		// rejects a state whose revision does not match its rule. Accumulated
-		// usage is preserved (a total-limit change does not reset spend).
-		return tx.Model(&models.AccessKeyCostLimitState{}).
-			Where("rule_id = ? AND rule_revision = ?", existing.ID, existing.RuleRevision).
-			Update("rule_revision", nextRevision).Error
+			Update("limit_nano_usd", limitNanoUSD).Error
 	}
 	rule := models.AccessKeyCostLimitRule{
 		AccessKeyID: keyID, Kind: models.AccessKeyCostLimitKindTotal,

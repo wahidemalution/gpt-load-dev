@@ -190,7 +190,6 @@ export default {
       key: 'Key',
       status: 'Status',
       created: 'Created',
-      usage30d: 'Usage (30d)',
       totalUsage: 'Lifetime usage',
       actions: 'Actions',
       statuses: { active: 'Active', disabled: 'Disabled' },

@@ -189,7 +189,6 @@ export default {
       key: 'キー',
       status: '状態',
       created: '作成日時',
-      usage30d: '使用量（30 日）',
       totalUsage: '累計使用量',
       actions: '操作',
       statuses: { active: '有効', disabled: '無効' },

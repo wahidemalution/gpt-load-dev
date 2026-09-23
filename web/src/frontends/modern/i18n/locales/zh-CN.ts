@@ -186,7 +186,6 @@ export default {
       key: '密钥',
       status: '状态',
       created: '创建时间',
-      usage30d: '用量（30 天）',
       totalUsage: '累计用量',
       actions: '操作',
       statuses: { active: '已启用', disabled: '已停用' },

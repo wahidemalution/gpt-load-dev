@@ -143,16 +143,24 @@ func TestOwnedKeyLimitsAndStatus(t *testing.T) {
 		t.Fatalf("PATCH bad status = %d %s, want 400", badStatus.Code, badStatus.Body.String())
 	}
 
-	// Updating the credit twice keeps the rule and its checkpoint revision in
-	// lockstep (the runtime restore path rejects a mismatch).
+	// A limit-only edit preserves accumulated spend: the rule revision stays
+	// put (so the runtime treats it as the same rule and keeps used_nano_usd)
+	// while the limit itself changes. Simulate accumulated spend, then raise
+	// the limit and confirm neither the revision nor the used amount resets.
+	if err := env.db.Model(&models.AccessKeyCostLimitState{}).
+		Where("rule_id = ?", rule.ID).
+		Update("used_nano_usd", int64(400_000_000)).Error; err != nil {
+		t.Fatalf("seed used spend: %v", err)
+	}
+	firstRevision := rule.RuleRevision
 	first := env.do(http.MethodPatch, "/api/clientarea/keys/"+fmt.Sprint(created.ID)+"/limits", token, map[string]any{
-		"credit_limit_nano_usd": int64(500),
+		"credit_limit_nano_usd": int64(2_000_000_000),
 	})
 	if first.Code != http.StatusOK {
 		t.Fatalf("PATCH first credit = %d %s, want 200", first.Code, first.Body.String())
 	}
 	second := env.do(http.MethodPatch, "/api/clientarea/keys/"+fmt.Sprint(created.ID)+"/limits", token, map[string]any{
-		"credit_limit_nano_usd": int64(600),
+		"credit_limit_nano_usd": int64(3_000_000_000),
 	})
 	if second.Code != http.StatusOK {
 		t.Fatalf("PATCH second credit = %d %s, want 200", second.Code, second.Body.String())
@@ -161,8 +169,11 @@ func TestOwnedKeyLimitsAndStatus(t *testing.T) {
 		Take(&rule).Error; err != nil {
 		t.Fatalf("reload total rule: %v", err)
 	}
-	if rule.LimitNanoUSD != 600 || rule.RuleRevision != 3 {
-		t.Fatalf("total rule = %d limit / rev %d, want 600 / 3", rule.LimitNanoUSD, rule.RuleRevision)
+	if rule.LimitNanoUSD != 3_000_000_000 {
+		t.Fatalf("total rule limit = %d, want 3000000000", rule.LimitNanoUSD)
+	}
+	if rule.RuleRevision != firstRevision {
+		t.Fatalf("rule revision = %d, want unchanged %d after limit-only edits", rule.RuleRevision, firstRevision)
 	}
 	var state models.AccessKeyCostLimitState
 	if err := env.db.First(&state, rule.ID).Error; err != nil {
@@ -170,6 +181,9 @@ func TestOwnedKeyLimitsAndStatus(t *testing.T) {
 	}
 	if state.RuleRevision != rule.RuleRevision {
 		t.Fatalf("state revision = %d, rule revision = %d, want equal", state.RuleRevision, rule.RuleRevision)
+	}
+	if state.UsedNanoUSD != 400_000_000 {
+		t.Fatalf("state used_nano_usd = %d, want preserved 400000000", state.UsedNanoUSD)
 	}
 
 	// 5. credit 0 clears the total rule; models [] clears the allowlist.
