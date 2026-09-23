@@ -12,6 +12,7 @@ type AccessKey struct {
 	Status                  string  `gorm:"type:varchar(32);not null;default:'active';check:chk_access_key_status,status IN ('active','disabled')"`
 	Filters                 JSON    `gorm:"type:json"`
 	RPMLimit                int64   `gorm:"not null;default:0"`
+	MaxConcurrent           int64   `gorm:"column:max_concurrent;not null;default:0;check:chk_access_key_max_concurrent,max_concurrent >= 0"`
 	DailyCostLimitNanoUSD   int64   `gorm:"column:daily_cost_limit_nano_usd;not null;default:0;check:chk_access_key_daily_cost_limit_nano,daily_cost_limit_nano_usd >= 0"`
 	MonthlyCostLimitNanoUSD int64   `gorm:"column:monthly_cost_limit_nano_usd;not null;default:0;check:chk_access_key_monthly_cost_limit_nano,monthly_cost_limit_nano_usd >= 0"`
 	ExpiresAtMS             *int64  `gorm:"column:expires_at_ms"`
