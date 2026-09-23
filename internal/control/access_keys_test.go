@@ -773,6 +773,25 @@ func TestAccessKeyEndpointsDistinguishRPMLimit(t *testing.T) {
 		})
 	}
 
+	t.Run("POST returns persisted max_concurrent", func(t *testing.T) {
+		fixture, engine := newServer(t)
+		recorder := serve(engine, http.MethodPost, "/api/access-keys", `{"name":"concurrent","rpm_limit":12,"max_concurrent":3}`)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("POST = %d %s, want 200", recorder.Code, recorder.Body.String())
+		}
+		response := decodeAccessKey(t, recorder.Body.Bytes())
+		if response.RPMLimit != 12 || response.MaxConcurrent != 3 {
+			t.Fatalf("response limits = %d/%d, want 12/3", response.RPMLimit, response.MaxConcurrent)
+		}
+		row := loadAccessKeyRow(t, fixture.db, response.ID)
+		if row.MaxConcurrent != 3 {
+			t.Fatalf("stored max_concurrent = %d, want 3", row.MaxConcurrent)
+		}
+		if got := fixture.manager.Current().AccessKeysByHash[row.KeyHash].MaxConcurrent; got != 3 {
+			t.Fatalf("snapshot max_concurrent = %d, want 3", got)
+		}
+	})
+
 	t.Run("PUT omission preserves and zero clears", func(t *testing.T) {
 		fixture, engine := newServer(t)
 		created, err := fixture.service.CreateAccessKey(t.Context(), AccessKeyCreateRequest{

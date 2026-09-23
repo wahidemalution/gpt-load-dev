@@ -145,8 +145,9 @@ func (s *Service) CreateAccessKeyIdempotent(
 				ID: row.ID, Name: row.Name, KeyPrefix: *row.KeyPrefix, KeySuffix: row.KeySuffix,
 				PriceMultiplierMicros: row.PriceMultiplierMicros,
 				Status:                row.Status, Filters: row.Filters, RPMLimit: row.RPMLimit,
-				ExpiresAtMS: row.ExpiresAtMS,
-				CreatedAtMS: row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
+				MaxConcurrent: row.MaxConcurrent,
+				ExpiresAtMS:   row.ExpiresAtMS,
+				CreatedAtMS:   row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
 			})
 			if err != nil {
 				return idempotentMutationResult{}, err
