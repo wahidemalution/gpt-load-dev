@@ -286,7 +286,7 @@ func TestUsageDailyGranularityScopedAndAligned(t *testing.T) {
 	}
 }
 
-func TestKeysListPopulates30DayUsage(t *testing.T) {
+func TestKeysListPopulatesLifetimeUsage(t *testing.T) {
 	env := newHTTPTestEnv(t)
 	ctx := context.Background()
 
@@ -313,13 +313,13 @@ func TestKeysListPopulates30DayUsage(t *testing.T) {
 		}
 	}
 
-	// In-window usage for the first key only, split across two buckets/models.
+	// Lifetime usage for the first key only, split across two buckets/models.
 	recentBucket := env.now.Add(-time.Hour).UnixMilli()
 	oldBucket := env.now.Add(-40 * 24 * time.Hour).UnixMilli()
 	stats := []models.UsageStat{
 		{BucketStartMS: recentBucket, AccessKeyID: withUsage.ID, Model: "gpt-5", RequestCount: 3, SuccessCount: 3, EstimatedCostNanoUSD: 1500},
 		{BucketStartMS: recentBucket, AccessKeyID: withUsage.ID, Model: "gpt-4", RequestCount: 2, SuccessCount: 2, EstimatedCostNanoUSD: 500},
-		// Outside the 30-day window: must not be counted.
+		// Old bucket still counts: the aggregate is lifetime, not windowed.
 		{BucketStartMS: oldBucket, AccessKeyID: withUsage.ID, Model: "gpt-3", RequestCount: 9, SuccessCount: 9, EstimatedCostNanoUSD: 9000},
 	}
 	for i := range stats {
@@ -360,9 +360,8 @@ func TestKeysListPopulates30DayUsage(t *testing.T) {
 	if !ok {
 		t.Fatalf("key %d missing from list", withUsage.ID)
 	}
-	if used.Usage30dNanoUSD != 2000 || used.RequestCount30d != 5 {
-		t.Fatalf("used key usage = %d nano / %d requests, want 2000 / 5",
-			used.Usage30dNanoUSD, used.RequestCount30d)
+	if used.UsageTotalNanoUSD != 11000 {
+		t.Fatalf("used key usage = %d nano, want 11000 lifetime", used.UsageTotalNanoUSD)
 	}
 	if used.LastRequestAtMS == nil || *used.LastRequestAtMS != lastRequestMS {
 		t.Fatalf("used key last_request_at_ms = %v, want %d", used.LastRequestAtMS, lastRequestMS)
@@ -372,9 +371,8 @@ func TestKeysListPopulates30DayUsage(t *testing.T) {
 	if !ok {
 		t.Fatalf("key %d missing from list", withoutUsage.ID)
 	}
-	if idle.Usage30dNanoUSD != 0 || idle.RequestCount30d != 0 {
-		t.Fatalf("idle key usage = %d nano / %d requests, want 0 / 0",
-			idle.Usage30dNanoUSD, idle.RequestCount30d)
+	if idle.UsageTotalNanoUSD != 0 {
+		t.Fatalf("idle key usage = %d nano, want 0", idle.UsageTotalNanoUSD)
 	}
 	if idle.LastRequestAtMS != nil {
 		t.Fatalf("idle key last_request_at_ms = %v, want nil", *idle.LastRequestAtMS)
@@ -404,8 +402,8 @@ func TestOwnedKeyMutationsRepublishRuntimeState(t *testing.T) {
 		t.Fatalf("refreshes after create = %d, want 1 (gateway must observe the new key)", refreshes)
 	}
 
-	if err := env.service.DisableOwnedKey(ctx, created.ID, view.ID); err != nil {
-		t.Fatalf("DisableOwnedKey() error = %v", err)
+	if err := env.service.SetOwnedKeyStatus(ctx, created.ID, view.ID, "disabled"); err != nil {
+		t.Fatalf("SetOwnedKeyStatus() error = %v", err)
 	}
 	if refreshes != 2 {
 		t.Fatalf("refreshes after disable = %d, want 2 (gateway must observe the disabled key)", refreshes)

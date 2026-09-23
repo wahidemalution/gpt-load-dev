@@ -212,6 +212,18 @@ func (m *HTTPModule) routes() []httproute.Route {
 			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleDeleteKey},
 		},
 		{
+			Name:     "clientarea.keys.limits",
+			Methods:  []string{http.MethodPatch},
+			Path:     "/keys/:id/limits",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleKeyLimits},
+		},
+		{
+			Name:     "clientarea.keys.status",
+			Methods:  []string{http.MethodPatch},
+			Path:     "/keys/:id/status",
+			Handlers: gin.HandlersChain{m.sessionAuth(), m.handleKeyStatus},
+		},
+		{
 			Name:     "clientarea.usage",
 			Methods:  []string{http.MethodGet},
 			Path:     "/usage",
