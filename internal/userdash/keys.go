@@ -296,5 +296,17 @@ func (m *HTTPModule) handleUsage(c *gin.Context) {
 		response.Error(c, app_errors.ErrInternalServer)
 		return
 	}
+	// granularity=day adds a per-day token series for the activity heatmap; the
+	// default response stays a bare per-model array for compatibility.
+	if c.Query("granularity") == "day" {
+		daily, dailyErr := m.service.QueryOwnedDailyTokens(c.Request.Context(), profile.ID, fromMS, toMS)
+		if dailyErr != nil {
+			logrus.WithError(dailyErr).Error("userdash: daily usage query failed")
+			response.Error(c, app_errors.ErrInternalServer)
+			return
+		}
+		response.SuccessI18n(c, "common.success", gin.H{"models": rows, "daily": daily})
+		return
+	}
 	response.SuccessI18n(c, "common.success", rows)
 }

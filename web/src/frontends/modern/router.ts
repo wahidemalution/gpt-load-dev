@@ -105,6 +105,7 @@ export function createModernRouter(
         path: pagePath('clientarea-dashboard'),
         name: 'modern-clientarea-dashboard',
         component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        redirect: { name: 'modern-clientarea-dashboard-child' },
         children: [
           {
             path: '',
@@ -122,6 +123,7 @@ export function createModernRouter(
         path: pagePath('clientarea-keys'),
         name: 'modern-clientarea-keys',
         component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        redirect: { name: 'modern-clientarea-keys-child' },
         children: [
           {
             path: '',
@@ -135,6 +137,7 @@ export function createModernRouter(
         path: pagePath('clientarea-usage'),
         name: 'modern-clientarea-usage',
         component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        redirect: { name: 'modern-clientarea-usage-child' },
         children: [
           {
             path: '',
@@ -152,6 +155,7 @@ export function createModernRouter(
         path: pagePath('clientarea-models'),
         name: 'modern-clientarea-models',
         component: () => import('./features/clientarea/ClientAreaShell.vue'),
+        redirect: { name: 'modern-clientarea-models-child' },
         children: [
           {
             path: '',

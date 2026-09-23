@@ -155,6 +155,23 @@ export default {
       cost30d: '推定費用（30 日）',
       failed: '概要を読み込めません',
       failedDescription: '通信環境を確認して再試行してください。',
+      heatmap: {
+        title: 'トークンアクティビティ',
+        description: '過去 1 年間の 1 日あたりのトークン合計使用量です。',
+        failed: 'トークンアクティビティを読み込めません。',
+        less: '少',
+        more: '多',
+        tooltip: '{date}：{tokens} トークン',
+        weekdays: {
+          '0': '日',
+          '1': '月',
+          '2': '火',
+          '3': '水',
+          '4': '木',
+          '5': '金',
+          '6': '土',
+        },
+      },
     },
     keys: {
       title: 'API キー',

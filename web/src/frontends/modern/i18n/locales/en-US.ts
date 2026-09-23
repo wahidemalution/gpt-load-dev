@@ -156,6 +156,23 @@ export default {
       cost30d: 'Estimated cost (30d)',
       failed: 'Unable to load your overview',
       failedDescription: 'Check your connection and try again.',
+      heatmap: {
+        title: 'Token activity',
+        description: 'Total tokens used per day over the last year.',
+        failed: 'Unable to load token activity.',
+        less: 'Less',
+        more: 'More',
+        tooltip: '{date}: {tokens} tokens',
+        weekdays: {
+          '0': 'Sun',
+          '1': 'Mon',
+          '2': 'Tue',
+          '3': 'Wed',
+          '4': 'Thu',
+          '5': 'Fri',
+          '6': 'Sat',
+        },
+      },
     },
     keys: {
       title: 'API Keys',

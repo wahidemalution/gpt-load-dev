@@ -195,6 +195,97 @@ func TestKeysUsageScopedToOwnedKeys(t *testing.T) {
 	}
 }
 
+func TestUsageDailyGranularityScopedAndAligned(t *testing.T) {
+	env := newHTTPTestEnv(t)
+	ctx := context.Background()
+
+	created, err := env.service.Signup(ctx, "daily@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Signup() error = %v", err)
+	}
+	token, _, _, err := env.service.Login(ctx, "daily@example.com", "password1")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+
+	owned := models.AccessKey{
+		Name: "owned", KeyValue: "cipher-owned", KeyHash: "owned-hash",
+		KeySuffix: "wxyz", Status: "active",
+	}
+	if err := env.db.Create(&owned).Error; err != nil {
+		t.Fatalf("seed owned key: %v", err)
+	}
+	if err := env.db.Model(&models.AccessKey{}).Where("id = ?", owned.ID).
+		Update("user_id", created.ID).Error; err != nil {
+		t.Fatalf("attach owned key: %v", err)
+	}
+	unowned := models.AccessKey{
+		Name: "admin", KeyValue: "cipher-unowned", KeyHash: "unowned-daily-hash",
+		KeySuffix: "abcd", Status: "active",
+	}
+	if err := env.db.Create(&unowned).Error; err != nil {
+		t.Fatalf("seed unowned key: %v", err)
+	}
+
+	// Two hourly buckets on the same UTC day for the owned key sum into one
+	// day row; an unowned-key row on the same day must not leak in.
+	day := time.Date(2026, time.September, 20, 0, 0, 0, 0, time.UTC)
+	dayMS := day.UnixMilli()
+	seed := []models.UsageStat{
+		{BucketStartMS: dayMS + 2*time.Hour.Milliseconds(), AccessKeyID: owned.ID, Model: "gpt-5", RequestCount: 1, SuccessCount: 1, UncachedInputTokens: 100, OutputTokens: 50, CacheReadTokens: 10},
+		{BucketStartMS: dayMS + 5*time.Hour.Milliseconds(), AccessKeyID: owned.ID, Model: "gpt-5", RequestCount: 1, SuccessCount: 1, UncachedInputTokens: 200, CacheWrite5MTokens: 25},
+		{BucketStartMS: dayMS + 2*time.Hour.Milliseconds(), AccessKeyID: unowned.ID, Model: "gpt-5", RequestCount: 9, SuccessCount: 9, UncachedInputTokens: 99999},
+	}
+	for i := range seed {
+		if err := env.db.Create(&seed[i]).Error; err != nil {
+			t.Fatalf("seed usage stat #%d: %v", i, err)
+		}
+	}
+
+	fromMS := day.Add(-time.Hour).UnixMilli()
+	toMS := day.Add(24 * time.Hour).UnixMilli()
+	recorder := env.do(
+		http.MethodGet,
+		"/api/clientarea/usage?granularity=day&from_ms="+fmt.Sprint(fromMS)+"&to_ms="+fmt.Sprint(toMS),
+		token, nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /usage granularity=day = %d %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	payload := decodeEnvelope(t, recorder)
+	var body struct {
+		Models []struct {
+			Model        string `json:"model"`
+			RequestCount int64  `json:"request_count"`
+		} `json:"models"`
+		Daily []DailyTokenRow `json:"daily"`
+	}
+	if err := json.Unmarshal(payload.Data, &body); err != nil {
+		t.Fatalf("decode granularity=day response: %v", err)
+	}
+	if len(body.Models) != 1 || body.Models[0].Model != "gpt-5" || body.Models[0].RequestCount != 2 {
+		t.Fatalf("models = %#v, want one owned gpt-5 row with 2 requests", body.Models)
+	}
+	// 100+50+10 + 200+25 = 385 tokens; unowned 99999 excluded.
+	if len(body.Daily) != 1 || body.Daily[0].DayMS != dayMS || body.Daily[0].TotalTokens != 385 {
+		t.Fatalf("daily = %#v, want one row day_ms=%d tokens=385", body.Daily, dayMS)
+	}
+
+	// The default shape stays a bare per-model array with no daily field.
+	legacy := env.do(
+		http.MethodGet,
+		"/api/clientarea/usage?from_ms="+fmt.Sprint(fromMS)+"&to_ms="+fmt.Sprint(toMS),
+		token, nil,
+	)
+	var legacyRows []UsageRow
+	if err := json.Unmarshal(decodeEnvelope(t, legacy).Data, &legacyRows); err != nil {
+		t.Fatalf("decode default usage response: %v", err)
+	}
+	if len(legacyRows) != 1 || legacyRows[0].RequestCount != 2 || legacyRows[0].Model != "gpt-5" {
+		t.Fatalf("legacy rows = %#v, want one owned gpt-5 row", legacyRows)
+	}
+}
+
 func TestKeysListPopulates30DayUsage(t *testing.T) {
 	env := newHTTPTestEnv(t)
 	ctx := context.Background()

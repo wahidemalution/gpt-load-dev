@@ -36,6 +36,12 @@
   --modern-chart-write: light-dark(#b38b46, #dfbd82);
   --modern-chart-output: light-dark(#8b72b0, #bea7de);
   --modern-chart-cost: light-dark(#318d91, #82ced0);
+  /* 客户区活动热力图：空白格用中性底，填充格由 accent 按透明度混合。 */
+  --modern-heatmap-cell: 9px;
+  --modern-heatmap-gap: 2px;
+  --modern-heatmap-label: 14px;
+  --modern-heatmap-weekday-col: 22px;
+  --modern-heatmap-0: light-dark(#ebedf0, #2d333b);
   --modern-chart-area-fill: color-mix(in srgb, currentColor 10%, transparent);
   --modern-chart-area-soft-fill: color-mix(in srgb, currentColor 8%, transparent);
   --modern-overlay: rgb(20 20 18 / 35%);

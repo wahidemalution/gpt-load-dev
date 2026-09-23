@@ -50,9 +50,20 @@ export interface ClientAreaUsageRow {
   estimated_cost_nano_usd: number
 }
 
+export interface ClientAreaDailyTokenRow {
+  day_ms: number
+  total_tokens: number
+}
+
+export interface ClientAreaUsageResult {
+  models: ClientAreaUsageRow[]
+  daily: ClientAreaDailyTokenRow[]
+}
+
 export interface ClientAreaUsageParams {
   from_ms: number
   to_ms: number
+  granularity?: 'day'
 }
 
 function readOwnedKey(value: unknown): OwnedKeyView {
@@ -100,6 +111,14 @@ function readUsageRow(value: unknown): ClientAreaUsageRow {
     model: text(row.model),
     request_count: integer(row.request_count),
     estimated_cost_nano_usd: integer(row.estimated_cost_nano_usd),
+  }
+}
+
+function readDailyTokenRow(value: unknown): ClientAreaDailyTokenRow {
+  const row = record(value)
+  return {
+    day_ms: integer(row.day_ms),
+    total_tokens: integer(row.total_tokens),
   }
 }
 
@@ -229,4 +248,23 @@ export async function usage(
   return list(
     await client.request(`/api/clientarea/usage?${query}`, { ...(signal ? { signal } : {}) }),
   ).map(readUsageRow)
+}
+
+export async function usageWithDaily(
+  client: ApiClient,
+  params: ClientAreaUsageParams,
+  signal?: AbortSignal,
+): Promise<ClientAreaUsageResult> {
+  const query = new URLSearchParams({
+    from_ms: String(params.from_ms),
+    to_ms: String(params.to_ms),
+    granularity: params.granularity ?? 'day',
+  })
+  const row = record(
+    await client.request(`/api/clientarea/usage?${query}`, { ...(signal ? { signal } : {}) }),
+  )
+  return {
+    models: list(row.models).map(readUsageRow),
+    daily: list(row.daily).map(readDailyTokenRow),
+  }
 }

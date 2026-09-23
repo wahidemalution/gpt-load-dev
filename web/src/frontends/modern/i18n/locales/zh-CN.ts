@@ -152,6 +152,23 @@ export default {
       cost30d: '预估费用（30 天）',
       failed: '无法加载总览',
       failedDescription: '请检查网络后重试。',
+      heatmap: {
+        title: 'Token 活跃度',
+        description: '过去一年每天的 token 总用量。',
+        failed: '无法加载 Token 活跃度。',
+        less: '少',
+        more: '多',
+        tooltip: '{date}：{tokens} tokens',
+        weekdays: {
+          '0': '周日',
+          '1': '周一',
+          '2': '周二',
+          '3': '周三',
+          '4': '周四',
+          '5': '周五',
+          '6': '周六',
+        },
+      },
     },
     keys: {
       title: 'API 密钥',

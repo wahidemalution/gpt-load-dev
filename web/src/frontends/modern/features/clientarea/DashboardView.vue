@@ -2,12 +2,13 @@
 import { computed, onMounted, onScopeDispose, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { listKeys, usage } from '@modern/api/clientarea'
+import { listKeys, usageWithDaily, type ClientAreaDailyTokenRow } from '@modern/api/clientarea'
 import { formatNanoUSD } from '@modern/app/format'
 import { AppButton, AppCollectionState } from '@modern/components/ui'
 import { numberFormatter } from '@modern/components/ui/intl-formatters'
 
 import { useClientAreaShell, useUserApiClient } from './client-area'
+import UsageHeatmap from './UsageHeatmap.vue'
 
 const { t, locale } = useI18n()
 const client = useUserApiClient()
@@ -16,6 +17,8 @@ const { profile } = useClientAreaShell()
 const keyCount = ref<number | null>(null)
 const requests = ref<number | null>(null)
 const costNanoUSD = ref<number | null>(null)
+const daily = ref<ClientAreaDailyTokenRow[]>([])
+const heatmapFailed = ref(false)
 const loading = ref(true)
 const failed = ref(false)
 let controller: AbortController | undefined
@@ -28,17 +31,28 @@ async function load(): Promise<void> {
   controller = request
   loading.value = true
   failed.value = false
+  heatmapFailed.value = false
   const to = Date.now()
   const from = to - 30 * 86400000
+  const heatmapFrom = to - 365 * 86400000
   try {
-    const [keys, rows] = await Promise.all([
+    const [keys, rows, heatmap] = await Promise.all([
       listKeys(client, request.signal),
-      usage(client, { from_ms: from, to_ms: to }, request.signal),
+      usageWithDaily(client, { from_ms: from, to_ms: to }, request.signal),
+      usageWithDaily(
+        client,
+        { from_ms: heatmapFrom, to_ms: to, granularity: 'day' },
+        request.signal,
+      ).catch(() => {
+        heatmapFailed.value = true
+        return { models: [], daily: [] }
+      }),
     ])
     if (request.signal.aborted) return
     keyCount.value = keys.length
-    requests.value = rows.reduce((total, row) => total + row.request_count, 0)
-    costNanoUSD.value = rows.reduce((total, row) => total + row.estimated_cost_nano_usd, 0)
+    requests.value = rows.models.reduce((total, row) => total + row.request_count, 0)
+    costNanoUSD.value = rows.models.reduce((total, row) => total + row.estimated_cost_nano_usd, 0)
+    daily.value = heatmap.daily
   } catch {
     if (!request.signal.aborted) failed.value = true
   } finally {
@@ -97,6 +111,7 @@ const stats = computed(() => [
         <p class="modern-clientarea-stat-value">{{ stat.value }}</p>
       </div>
     </div>
+    <UsageHeatmap v-if="!failed" :rows="daily" :loading="loading" :failed="heatmapFailed" />
     <AppButton
       class="modern-clientarea-refresh"
       variant="text"
