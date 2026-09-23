@@ -26,11 +26,16 @@ type AdminUserView struct {
 
 // AdminUserKeyView is the admin-facing projection of a user-owned access key.
 type AdminUserKeyView struct {
-	ID        uint   `json:"id"`
-	Name      string `json:"name"`
-	KeyPrefix string `json:"key_prefix"`
-	KeySuffix string `json:"key_suffix"`
-	Status    string `json:"status"`
+	ID                 uint     `json:"id"`
+	Name               string   `json:"name"`
+	KeyPrefix          string   `json:"key_prefix"`
+	KeySuffix          string   `json:"key_suffix"`
+	Status             string   `json:"status"`
+	RPMLimit           int64    `json:"rpm_limit"`
+	MaxConcurrent      int64    `json:"max_concurrent"`
+	CreditLimitNanoUSD int64    `json:"credit_limit_nano_usd"`
+	Models             []string `json:"models"`
+	UsageTotalNanoUSD  int64    `json:"usage_total_nano_usd"`
 }
 
 // AdminUserDetail is the full admin view of one user, including owned keys.
@@ -346,10 +351,22 @@ func (s *Service) GetAdminUser(ctx context.Context, userID uint) (AdminUserDetai
 	}
 	var rows []models.AccessKey
 	if err := s.db.WithContext(ctx).
-		Select("id", "name", "key_prefix", "key_suffix", "status").
+		Select("id", "name", "key_prefix", "key_suffix", "status", "rpm_limit", "max_concurrent", "filters").
 		Where("user_id = ?", userID).
 		Order("id ASC").
 		Find(&rows).Error; err != nil {
+		return AdminUserDetail{}, err
+	}
+	keyIDs := make([]uint, 0, len(rows))
+	for _, row := range rows {
+		keyIDs = append(keyIDs, row.ID)
+	}
+	usage, err := s.ownedKeyUsage(ctx, keyIDs)
+	if err != nil {
+		return AdminUserDetail{}, err
+	}
+	credits, err := s.ownedKeyCreditLimits(ctx, keyIDs)
+	if err != nil {
 		return AdminUserDetail{}, err
 	}
 	keys := make([]AdminUserKeyView, 0, len(rows))
@@ -358,10 +375,18 @@ func (s *Service) GetAdminUser(ctx context.Context, userID uint) (AdminUserDetai
 		if row.KeyPrefix != nil {
 			prefix = *row.KeyPrefix
 		}
-		keys = append(keys, AdminUserKeyView{
+		view := AdminUserKeyView{
 			ID: row.ID, Name: row.Name, KeyPrefix: prefix, KeySuffix: row.KeySuffix,
-			Status: row.Status,
-		})
+			Status: row.Status, RPMLimit: row.RPMLimit, MaxConcurrent: row.MaxConcurrent,
+			Models: decodeOwnedKeyModels(row.Filters),
+		}
+		if aggregate, ok := usage[row.ID]; ok {
+			view.UsageTotalNanoUSD = aggregate.UsageTotalNanoUSD
+		}
+		if credit, ok := credits[row.ID]; ok {
+			view.CreditLimitNanoUSD = credit
+		}
+		keys = append(keys, view)
 	}
 	return AdminUserDetail{AdminUserView: decorated, Keys: keys}, nil
 }

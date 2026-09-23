@@ -87,6 +87,7 @@ const metadataFields = [
   'filters',
   'expires_at_ms',
   'rpm_limit',
+  'max_concurrent',
   'price_multiplier',
   'cost_limit_rules',
   'cost_limit_status',

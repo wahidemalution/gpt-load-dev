@@ -143,6 +143,7 @@ type AccessKeyCreateRequest struct {
 	Status          *state.AccessKeyStatus          `json:"status"`
 	Filters         *AccessKeyFilters               `json:"filters"`
 	RPMLimit        OptionalRPMLimit                `json:"rpm_limit"`
+	MaxConcurrent   OptionalRPMLimit                `json:"max_concurrent"`
 	CostLimitRules  OptionalAccessKeyCostLimitRules `json:"cost_limit_rules"`
 	ExpiresAtMS     *int64                          `json:"expires_at_ms"`
 }
@@ -154,6 +155,7 @@ type AccessKeyUpdateRequest struct {
 	Status          *state.AccessKeyStatus          `json:"status"`
 	Filters         *AccessKeyFilters               `json:"filters"`
 	RPMLimit        OptionalRPMLimit                `json:"rpm_limit"`
+	MaxConcurrent   OptionalRPMLimit                `json:"max_concurrent"`
 	CostLimitRules  OptionalAccessKeyCostLimitRules `json:"cost_limit_rules"`
 	ExpiresAtMS     OptionalNullableEpochMS         `json:"expires_at_ms"`
 }
@@ -170,6 +172,7 @@ type AccessKeyMetadata struct {
 	Status          state.AccessKeyStatus     `json:"status"`
 	Filters         AccessKeyFilters          `json:"filters"`
 	RPMLimit        int64                     `json:"rpm_limit"`
+	MaxConcurrent   int64                     `json:"max_concurrent"`
 	CostLimitRules  []AccessKeyCostLimitRule  `json:"cost_limit_rules"`
 	CostLimitStatus *AccessKeyCostLimitStatus `json:"cost_limit_status,omitempty"`
 	ExpiresAtMS     *int64                    `json:"expires_at_ms"`
@@ -205,6 +208,7 @@ type accessKeyMetadataRow struct {
 	Status                string
 	Filters               models.JSON
 	RPMLimit              int64
+	MaxConcurrent         int64
 	ExpiresAtMS           *int64
 	CreatedAtMS           int64
 	UpdatedAtMS           int64
@@ -224,6 +228,7 @@ func (s *Service) newAccessKeyRow(
 	name string,
 	filters AccessKeyFilters,
 	rpmLimit int64,
+	maxConcurrent int64,
 	customKey string,
 ) (models.AccessKey, string, error) {
 	encodedFilters, err := encodeStoredAccessKeyFilters(filters)
@@ -235,14 +240,15 @@ func (s *Service) newAccessKeyRow(
 		return models.AccessKey{}, "", err
 	}
 	return models.AccessKey{
-		Name:      name,
-		KeyValue:  credential.KeyValue,
-		KeyHash:   credential.KeyHash,
-		KeyPrefix: &credential.KeyPrefix,
-		KeySuffix: credential.KeySuffix,
-		Status:    string(state.AccessKeyStatusActive),
-		Filters:   models.JSON(encodedFilters),
-		RPMLimit:  rpmLimit,
+		Name:          name,
+		KeyValue:      credential.KeyValue,
+		KeyHash:       credential.KeyHash,
+		KeyPrefix:     &credential.KeyPrefix,
+		KeySuffix:     credential.KeySuffix,
+		Status:        string(state.AccessKeyStatusActive),
+		Filters:       models.JSON(encodedFilters),
+		RPMLimit:      rpmLimit,
+		MaxConcurrent: maxConcurrent,
 	}, credential.Plaintext, nil
 }
 
@@ -299,6 +305,10 @@ func (s *Service) CreateAccessKey(
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
+	maxConcurrent, err := normalizeRPMLimit(request.MaxConcurrent, 0)
+	if err != nil {
+		return AccessKeyCreateResult{}, err
+	}
 	costLimitRules, err := normalizeAccessKeyCostLimitRules(request.CostLimitRules, false)
 	if err != nil {
 		return AccessKeyCreateResult{}, err
@@ -326,7 +336,7 @@ func (s *Service) CreateAccessKey(
 		if err := validateFilterGroupReferences(tx, filters.Groups); err != nil {
 			return err
 		}
-		row, plaintext, err := s.newAccessKeyRow(name, filters, rpmLimit, request.Key)
+		row, plaintext, err := s.newAccessKeyRow(name, filters, rpmLimit, maxConcurrent, request.Key)
 		if err != nil {
 			return err
 		}
@@ -344,8 +354,9 @@ func (s *Service) CreateAccessKey(
 			ID: row.ID, Name: row.Name, KeyPrefix: *row.KeyPrefix, KeySuffix: row.KeySuffix,
 			PriceMultiplierMicros: row.PriceMultiplierMicros,
 			Status:                row.Status, Filters: row.Filters, RPMLimit: row.RPMLimit,
-			ExpiresAtMS: row.ExpiresAtMS,
-			CreatedAtMS: row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
+			MaxConcurrent: row.MaxConcurrent,
+			ExpiresAtMS:   row.ExpiresAtMS,
+			CreatedAtMS:   row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,
 		})
 		if err != nil {
 			return err
@@ -389,10 +400,13 @@ func (s *Service) accessKeyUpdateMutation(
 	request AccessKeyUpdateRequest,
 ) (func(*gorm.DB) (AccessKeyMetadata, error), error) {
 	if id == 0 || (request.Key == "" && request.Name == nil && request.Status == nil && request.Filters == nil &&
-		!request.RPMLimit.Set && !request.CostLimitRules.Set && !request.ExpiresAtMS.Set && !request.PriceMultiplier.Set) {
+		!request.RPMLimit.Set && !request.MaxConcurrent.Set && !request.CostLimitRules.Set && !request.ExpiresAtMS.Set && !request.PriceMultiplier.Set) {
 		return nil, app_errors.ErrBadRequest
 	}
 	if _, err := normalizeRPMLimit(request.RPMLimit, 0); err != nil {
+		return nil, err
+	}
+	if _, err := normalizeRPMLimit(request.MaxConcurrent, 0); err != nil {
 		return nil, err
 	}
 	if request.ExpiresAtMS.Set {
@@ -455,7 +469,7 @@ func (s *Service) accessKeyUpdateMutation(
 		var row accessKeyMetadataRow
 		if err := tx.Model(&models.AccessKey{}).
 			Select(
-				"id", "name", "key_prefix", "key_suffix", "status", "filters", "rpm_limit", "expires_at_ms", "price_multiplier_micros",
+				"id", "name", "key_prefix", "key_suffix", "status", "filters", "rpm_limit", "max_concurrent", "expires_at_ms", "price_multiplier_micros",
 				"created_at_ms", "updated_at_ms",
 			).
 			Where("id = ?", id).
@@ -518,6 +532,10 @@ func (s *Service) accessKeyUpdateMutation(
 			row.RPMLimit = request.RPMLimit.Value
 			updates["rpm_limit"] = row.RPMLimit
 		}
+		if request.MaxConcurrent.Set {
+			row.MaxConcurrent = request.MaxConcurrent.Value
+			updates["max_concurrent"] = row.MaxConcurrent
+		}
 		if request.ExpiresAtMS.Set {
 			row.ExpiresAtMS = cloneOptionalInt64(request.ExpiresAtMS.Value)
 			updates["expires_at_ms"] = row.ExpiresAtMS
@@ -540,7 +558,7 @@ func (s *Service) accessKeyUpdateMutation(
 		}
 		if err := tx.Model(&models.AccessKey{}).
 			Select(
-				"id", "name", "key_prefix", "key_suffix", "status", "filters", "rpm_limit", "expires_at_ms", "price_multiplier_micros",
+				"id", "name", "key_prefix", "key_suffix", "status", "filters", "rpm_limit", "max_concurrent", "expires_at_ms", "price_multiplier_micros",
 				"created_at_ms", "updated_at_ms",
 			).
 			Where("id = ?", row.ID).
@@ -664,6 +682,7 @@ func mapAccessKeyMetadataRow(row accessKeyMetadataRow) (AccessKeyMetadata, error
 		ID:              row.ID, Name: row.Name,
 		MaskedKey: maskedAccessKey(row.KeyPrefix, row.KeySuffix),
 		Status:    status, Filters: filters, RPMLimit: row.RPMLimit,
+		MaxConcurrent:  row.MaxConcurrent,
 		ExpiresAtMS:    cloneOptionalInt64(row.ExpiresAtMS),
 		CostLimitRules: []AccessKeyCostLimitRule{},
 		CreatedAtMS:    row.CreatedAtMS, UpdatedAtMS: row.UpdatedAtMS,

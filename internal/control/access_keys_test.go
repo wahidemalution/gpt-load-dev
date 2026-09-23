@@ -637,6 +637,58 @@ func TestAccessKeyServiceRPMLimit(t *testing.T) {
 	}
 }
 
+func TestAccessKeyServiceMaxConcurrent(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	fixture.service.random = bytes.NewReader(make([]byte, 16))
+	created, err := fixture.service.CreateAccessKey(context.Background(), AccessKeyCreateRequest{
+		Name: "concurrent", RPMLimit: OptionalRPMLimit{Set: true, Value: 12},
+		MaxConcurrent: OptionalRPMLimit{Set: true, Value: 3},
+	})
+	if err != nil {
+		t.Fatalf("CreateAccessKey() error = %v", err)
+	}
+	if created.RPMLimit != 12 || created.MaxConcurrent != 3 {
+		t.Fatalf("created limits = %d/%d, want 12/3", created.RPMLimit, created.MaxConcurrent)
+	}
+	row := loadAccessKeyRow(t, fixture.db, created.ID)
+	if row.RPMLimit != 12 || row.MaxConcurrent != 3 {
+		t.Fatalf("stored limits = %d/%d, want 12/3", row.RPMLimit, row.MaxConcurrent)
+	}
+	if got := fixture.manager.Current().AccessKeysByHash[row.KeyHash].MaxConcurrent; got != 3 {
+		t.Fatalf("snapshot MaxConcurrent = %d, want 3", got)
+	}
+
+	updated, err := fixture.service.UpdateAccessKey(context.Background(), created.ID, AccessKeyUpdateRequest{Name: stringPointer("renamed")})
+	if err != nil {
+		t.Fatalf("UpdateAccessKey() without max_concurrent error = %v", err)
+	}
+	if updated.MaxConcurrent != 3 {
+		t.Fatalf("preserved MaxConcurrent = %d, want 3", updated.MaxConcurrent)
+	}
+	updated, err = fixture.service.UpdateAccessKey(context.Background(), created.ID, AccessKeyUpdateRequest{
+		MaxConcurrent: OptionalRPMLimit{Set: true, Value: 0},
+	})
+	if err != nil {
+		t.Fatalf("UpdateAccessKey() with max_concurrent=0 error = %v", err)
+	}
+	row = loadAccessKeyRow(t, fixture.db, created.ID)
+	if updated.MaxConcurrent != 0 || row.MaxConcurrent != 0 || fixture.manager.Current().AccessKeysByHash[row.KeyHash].MaxConcurrent != 0 {
+		t.Fatalf("updated MaxConcurrent = %#v, want zero", updated)
+	}
+
+	if _, err := fixture.service.CreateAccessKey(context.Background(), AccessKeyCreateRequest{
+		Name: "negative", MaxConcurrent: OptionalRPMLimit{Set: true, Value: -1},
+	}); err == nil {
+		t.Fatal("CreateAccessKey() with negative max_concurrent succeeded, want validation error")
+	}
+	if _, err := fixture.service.UpdateAccessKey(context.Background(), created.ID, AccessKeyUpdateRequest{
+		MaxConcurrent: OptionalRPMLimit{Set: true, Value: -1},
+	}); err == nil {
+		t.Fatal("UpdateAccessKey() with negative max_concurrent succeeded, want validation error")
+	}
+}
+
 func TestAccessKeyEndpointsDistinguishRPMLimit(t *testing.T) {
 	t.Parallel()
 	initControlI18n(t)
@@ -725,6 +777,7 @@ func TestAccessKeyEndpointsDistinguishRPMLimit(t *testing.T) {
 		fixture, engine := newServer(t)
 		created, err := fixture.service.CreateAccessKey(t.Context(), AccessKeyCreateRequest{
 			Name: "seed", RPMLimit: OptionalRPMLimit{Set: true, Value: 12},
+			MaxConcurrent: OptionalRPMLimit{Set: true, Value: 4},
 		})
 		if err != nil {
 			t.Fatalf("seed CreateAccessKey() error = %v", err)
@@ -734,9 +787,16 @@ func TestAccessKeyEndpointsDistinguishRPMLimit(t *testing.T) {
 		if response.RPMLimit != 12 || loadAccessKeyRow(t, fixture.db, created.ID).RPMLimit != 12 {
 			t.Fatalf("omitted PUT did not preserve rpm_limit: %#v", response)
 		}
+		if response.MaxConcurrent != 4 || loadAccessKeyRow(t, fixture.db, created.ID).MaxConcurrent != 4 {
+			t.Fatalf("omitted PUT did not preserve max_concurrent: %#v", response)
+		}
 		response = decodeAccessKey(t, serve(engine, http.MethodPut, path, `{"rpm_limit":0}`).Body.Bytes())
 		if response.RPMLimit != 0 || loadAccessKeyRow(t, fixture.db, created.ID).RPMLimit != 0 {
 			t.Fatalf("zero PUT did not clear rpm_limit: %#v", response)
+		}
+		response = decodeAccessKey(t, serve(engine, http.MethodPut, path, `{"max_concurrent":0}`).Body.Bytes())
+		if response.MaxConcurrent != 0 || loadAccessKeyRow(t, fixture.db, created.ID).MaxConcurrent != 0 {
+			t.Fatalf("zero PUT did not clear max_concurrent: %#v", response)
 		}
 	})
 

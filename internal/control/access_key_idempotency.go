@@ -30,6 +30,7 @@ type accessKeyCreateDigestBody struct {
 	Status          *state.AccessKeyStatus          `json:"status,omitempty"`
 	Filters         accessKeyFilterDigestBody       `json:"filters"`
 	RPMLimit        int64                           `json:"rpm_limit"`
+	MaxConcurrent   int64                           `json:"max_concurrent,omitempty"`
 	CostLimitRules  []AccessKeyCostLimitRuleRequest `json:"cost_limit_rules,omitempty"`
 	ExpiresAtMS     *int64                          `json:"expires_at_ms,omitempty"`
 }
@@ -56,6 +57,10 @@ func (s *Service) CreateAccessKeyIdempotent(
 		return AccessKeyCreateResult{}, err
 	}
 	rpmLimit, err := normalizeRPMLimit(request.RPMLimit, 0)
+	if err != nil {
+		return AccessKeyCreateResult{}, err
+	}
+	maxConcurrent, err := normalizeRPMLimit(request.MaxConcurrent, 0)
 	if err != nil {
 		return AccessKeyCreateResult{}, err
 	}
@@ -86,6 +91,7 @@ func (s *Service) CreateAccessKeyIdempotent(
 		KeyHash:         keyHash,
 		PriceMultiplier: priceMultiplierDigest(priceMultiplier),
 		Name:            name, Status: digestStatus, Filters: digestFilters, RPMLimit: rpmLimit,
+		MaxConcurrent:  maxConcurrent,
 		CostLimitRules: costLimitRuleRequestsForDigest(costLimitRules),
 		ExpiresAtMS:    request.ExpiresAtMS,
 	})
@@ -121,7 +127,7 @@ func (s *Service) CreateAccessKeyIdempotent(
 			if err := validateFilterGroupReferences(tx, filters.Groups); err != nil {
 				return idempotentMutationResult{}, err
 			}
-			row, plaintext, err := s.newAccessKeyRow(name, filters, rpmLimit, request.Key)
+			row, plaintext, err := s.newAccessKeyRow(name, filters, rpmLimit, maxConcurrent, request.Key)
 			if err != nil {
 				return idempotentMutationResult{}, err
 			}
